@@ -10,6 +10,8 @@ timeout 8 ssh -o ConnectTimeout=4 pi "cat ~/.config/systemd/user/micro-ros-agent
   > pi/micro-ros-agent.service 2>/dev/null || true
 timeout 8 ssh -o ConnectTimeout=4 pi "cat ~/.config/systemd/user/gamepad-teleop.service" \
   > pi/gamepad-teleop.service 2>/dev/null || true
+timeout 8 ssh -o ConnectTimeout=4 pi "cat ~/.config/systemd/user/mode-toggle.service" \
+  > pi/mode-toggle.service 2>/dev/null || true
 
 git add -A
 if ! git diff --cached --quiet; then
