@@ -1,6 +1,5 @@
 #include <Arduino.h>
-#include <BluetoothSerial.h>
-#include <esp_bt.h>
+#include <NimBLEDevice.h>
 
 #include <micro_ros_platformio.h>
 #include <rcl/rcl.h>
@@ -9,11 +8,13 @@
 #include <rclc/executor.h>
 #include <geometry_msgs/msg/twist.h>
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled. In menuconfig / platformio.ini enable classic BT.
-#endif
-
-BluetoothSerial SerialBT;
+// Nordic UART Service -- matches the TREAD web control page (Web Bluetooth
+// only speaks BLE GATT, not Classic BT SPP, hence NimBLE instead of
+// BluetoothSerial). Must be advertised (not just exposed as a GATT service)
+// for Chrome's device picker to find it.
+#define NUS_SERVICE_UUID "6E400001-B5A3-F393-E0A9-E50E24DCCA9E"
+#define NUS_RX_CHAR_UUID "6E400002-B5A3-F393-E0A9-E50E24DCCA9E" // phone -> robot
+#define NUS_TX_CHAR_UUID "6E400003-B5A3-F393-E0A9-E50E24DCCA9E" // robot -> phone
 
 // Motor A = right side, Motor B = left side (mirror-mounted, so its
 // direction pins are flipped relative to Motor A for the same physical
@@ -47,9 +48,9 @@ const int SERVO_MAX_US = 2500;
 const unsigned long MICRO_ROS_BAUD = 115200; // must match `micro_ros_agent serial -b <baud>` on the Pi
 
 enum RobotMode { MODE_TELEOP, MODE_AUTONOMOUS };
-RobotMode mode = MODE_TELEOP; // start in teleop: autonomy must be opted into over BT
+RobotMode mode = MODE_TELEOP; // start in teleop: autonomy must be opted into over BLE
 
-int speedDuty = 150;              // teleop drive speed, set by '0'-'9' commands over BT
+int speedDuty = 150;              // teleop drive speed, set by '0'-'9' commands over BLE
 unsigned long lastBtCommandMs = 0;
 const unsigned long BT_TIMEOUT_MS = 1000;    // teleop dead-man switch
 
@@ -148,6 +149,42 @@ void cmdVelCallback(const void *msgin) {
   setMotors(leftDuty, rightDuty);
 }
 
+// ---- BLE (NimBLE, Nordic UART Service) ----
+class RxCallbacks : public NimBLECharacteristicCallbacks {
+  void onWrite(NimBLECharacteristic *characteristic, NimBLEConnInfo &connInfo) override {
+    std::string value = characteristic->getValue();
+    for (size_t i = 0; i < value.size(); i++) {
+      char c = value[i];
+      if (c == '\n' || c == '\r') continue;
+      handleBtCommand(c);
+    }
+    lastBtCommandMs = millis();
+  }
+};
+
+class ServerCallbacks : public NimBLEServerCallbacks {
+  void onDisconnect(NimBLEServer *server, NimBLEConnInfo &connInfo, int reason) override {
+    NimBLEDevice::startAdvertising(); // allow reconnect after the phone drops
+  }
+};
+
+void setupBle() {
+  NimBLEDevice::init("ESP32_Robot");
+  NimBLEServer *server = NimBLEDevice::createServer();
+  server->setCallbacks(new ServerCallbacks());
+
+  NimBLEService *service = server->createService(NUS_SERVICE_UUID);
+  NimBLECharacteristic *rxChar = service->createCharacteristic(
+      NUS_RX_CHAR_UUID, NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::WRITE_NR);
+  rxChar->setCallbacks(new RxCallbacks());
+  service->createCharacteristic(NUS_TX_CHAR_UUID, NIMBLE_PROPERTY::NOTIFY);
+  server->start(); // starts all created services; NimBLEService::start() is a no-op in this version
+
+  NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
+  advertising->addServiceUUID(NUS_SERVICE_UUID);
+  advertising->start();
+}
+
 void setupMicroRos() {
   Serial.begin(MICRO_ROS_BAUD); // set_microros_serial_transports() does not call begin() itself
   set_microros_serial_transports(Serial);
@@ -167,12 +204,7 @@ void setupMicroRos() {
 void setup() {
   Serial2.begin(115200); // debug only; errorLoop() reports here if wired to a debug adapter
 
-  // We only use Classic BT (SPP), not BLE, but the Bluedroid stack reserves
-  // heap for both by default. Releasing BLE's share back before starting BT
-  // is what leaves enough free heap for micro-ROS's node/subscription setup
-  // to succeed alongside it.
-  esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
-  SerialBT.begin("ESP32_Robot"); // pair to this name from your phone
+  setupBle();
 
   pinMode(AIN1, OUTPUT);
   pinMode(AIN2, OUTPUT);
@@ -186,7 +218,7 @@ void setup() {
 
   ledcSetup(PWM_CH_SERVO, SERVO_FREQ, SERVO_RES);
   ledcAttachPin(SERVO_PIN, PWM_CH_SERVO);
-  setServoAngle(90); // centered; drive it over Bluetooth later if needed
+  setServoAngle(90); // centered; drive it over BLE later if needed
 
   stopMotors();
 
@@ -198,11 +230,7 @@ void setup() {
 }
 
 void loop() {
-  if (SerialBT.available()) {
-    char cmd = SerialBT.read();
-    handleBtCommand(cmd);
-    lastBtCommandMs = millis();
-  }
+  // BLE commands arrive via RxCallbacks::onWrite(), not polled here.
 
   // Not RCCHECK'd: spin_some legitimately returns non-OK (e.g. timeout) when
   // there's simply nothing to process, which isn't a fatal condition.
