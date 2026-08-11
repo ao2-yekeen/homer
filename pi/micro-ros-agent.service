@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/ttyUSB0 -b 115200'
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600'
 Restart=on-failure
 RestartSec=2
 

@@ -45,7 +45,7 @@ const int SERVO_RES = 16;
 const int SERVO_MIN_US = 500;
 const int SERVO_MAX_US = 2500;
 
-const unsigned long MICRO_ROS_BAUD = 115200; // must match `micro_ros_agent serial -b <baud>` on the Pi
+const unsigned long MICRO_ROS_BAUD = 921600; // must match `micro_ros_agent serial -b <baud>` on the Pi
 
 enum RobotMode { MODE_TELEOP, MODE_AUTONOMOUS };
 RobotMode mode = MODE_TELEOP; // start in teleop: autonomy must be opted into over BLE
@@ -234,7 +234,7 @@ void loop() {
 
   // Not RCCHECK'd: spin_some legitimately returns non-OK (e.g. timeout) when
   // there's simply nothing to process, which isn't a fatal condition.
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10));
+  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2));
 
   // Dead-man switch for whichever source is currently in control.
   unsigned long now = millis();
