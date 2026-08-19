@@ -7,6 +7,7 @@
 #include <rclc/executor.h>
 #include <geometry_msgs/msg/twist.h>
 #include <std_msgs/msg/bool.h>
+#include <std_msgs/msg/int32.h>
 
 // Motor A = right side, Motor B = left side (mirror-mounted, so its
 // direction pins are flipped relative to Motor A for the same physical
@@ -39,14 +40,14 @@ const int SERVO_MAX_US = 2500;
 
 const unsigned long MICRO_ROS_BAUD = 921600; // must match `micro_ros_agent serial -b <baud>` on the Pi
 
-// AUTONOMOUS = obey /cmd_vel. TELEOP = paused/ignore it. Everything (motor
-// commands, mode switching) now comes from the Pi over this same serial
-// link -- there is no other input source.
+// AUTONOMOUS = obey /cmd_vel. TELEOP = obey /teleop/cmd_vel. Keeping the
+// sources separate prevents a gamepad command driving in autonomous mode.
 enum RobotMode { MODE_TELEOP, MODE_AUTONOMOUS };
 RobotMode mode = MODE_TELEOP; // safe default: robot stays put until the Pi explicitly opts in
 
 unsigned long lastCmdVelMs = 0;
-const unsigned long CMDVEL_TIMEOUT_MS = 1000; // stop if the Pi goes quiet mid-drive
+unsigned long lastTeleopCmdVelMs = 0;
+const unsigned long CMDVEL_TIMEOUT_MS = 1000; // stop if active Pi stream goes quiet
 
 // cmd_vel -> wheel duty conversion. Untuned placeholders: linear.x in m/s,
 // angular.z in rad/s, scaled directly to PWM duty. Retune SPEED_SCALE/
@@ -57,8 +58,12 @@ const float TURN_SCALE = 60.0f;   // duty per rad/s
 // ---- micro-ROS ----
 rcl_subscription_t cmdVelSub;
 geometry_msgs__msg__Twist cmdVelMsg;
+rcl_subscription_t teleopCmdVelSub;
+geometry_msgs__msg__Twist teleopCmdVelMsg;
 rcl_subscription_t setAutonomousSub;
 std_msgs__msg__Bool setAutonomousMsg;
+rcl_subscription_t neckAngleSub;
+std_msgs__msg__Int32 neckAngleMsg;
 rclc_executor_t executor;
 rclc_support_t support;
 rcl_allocator_t allocator;
@@ -111,11 +116,7 @@ void setMode(RobotMode newMode) {
   stopMotors();
 }
 
-void cmdVelCallback(const void *msgin) {
-  const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
-  lastCmdVelMs = millis();
-  if (mode != MODE_AUTONOMOUS) return;
-
+void applyTwist(const geometry_msgs__msg__Twist *msg) {
   float linear = (float)msg->linear.x;
   float angular = (float)msg->angular.z;
   int leftDuty = (int)(linear * SPEED_SCALE - angular * TURN_SCALE);
@@ -123,9 +124,27 @@ void cmdVelCallback(const void *msgin) {
   setMotors(leftDuty, rightDuty);
 }
 
+void cmdVelCallback(const void *msgin) {
+  const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
+  lastCmdVelMs = millis();
+  if (mode == MODE_AUTONOMOUS) applyTwist(msg);
+}
+
+void teleopCmdVelCallback(const void *msgin) {
+  const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
+  lastTeleopCmdVelMs = millis();
+  if (mode == MODE_TELEOP) applyTwist(msg);
+}
+
 void setAutonomousCallback(const void *msgin) {
   const std_msgs__msg__Bool *msg = (const std_msgs__msg__Bool *)msgin;
   setMode(msg->data ? MODE_AUTONOMOUS : MODE_TELEOP);
+}
+
+void neckAngleCallback(const void *msgin) {
+  const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
+  // This is the conservative clearance range established by servo_sweep.
+  setServoAngle(constrain(msg->data, 80, 150));
 }
 
 void setupMicroRos() {
@@ -140,13 +159,23 @@ void setupMicroRos() {
       &cmdVelSub, &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
       "cmd_vel"));
+  RCCHECK("teleop_sub_init", rclc_subscription_init_default(
+      &teleopCmdVelSub, &node,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+      "teleop/cmd_vel"));
   RCCHECK("mode_sub_init", rclc_subscription_init_default(
       &setAutonomousSub, &node,
       ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
       "set_autonomous"));
-  RCCHECK("executor_init", rclc_executor_init(&executor, &support.context, 2, &allocator));
+  RCCHECK("neck_sub_init", rclc_subscription_init_default(
+      &neckAngleSub, &node,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
+      "teleop/neck_angle"));
+  RCCHECK("executor_init", rclc_executor_init(&executor, &support.context, 4, &allocator));
   RCCHECK("executor_add_sub", rclc_executor_add_subscription(&executor, &cmdVelSub, &cmdVelMsg, &cmdVelCallback, ON_NEW_DATA));
+  RCCHECK("executor_add_teleop_sub", rclc_executor_add_subscription(&executor, &teleopCmdVelSub, &teleopCmdVelMsg, &teleopCmdVelCallback, ON_NEW_DATA));
   RCCHECK("executor_add_mode_sub", rclc_executor_add_subscription(&executor, &setAutonomousSub, &setAutonomousMsg, &setAutonomousCallback, ON_NEW_DATA));
+  RCCHECK("executor_add_neck_sub", rclc_executor_add_subscription(&executor, &neckAngleSub, &neckAngleMsg, &neckAngleCallback, ON_NEW_DATA));
 }
 
 void setup() {
@@ -164,13 +193,14 @@ void setup() {
 
   ledcSetup(PWM_CH_SERVO, SERVO_FREQ, SERVO_RES);
   ledcAttachPin(SERVO_PIN, PWM_CH_SERVO);
-  setServoAngle(90); // centered; drive it over cmd_vel/servo topic later if needed
+  setServoAngle(90); // safe initial neck position; teleop/neck_angle controls it
 
   stopMotors();
 
   setupMicroRos(); // takes over Serial (USB) for the Pi link; no more Serial.print after this
 
   lastCmdVelMs = millis();
+  lastTeleopCmdVelMs = lastCmdVelMs;
 }
 
 void loop() {
@@ -178,10 +208,9 @@ void loop() {
   // there's simply nothing to process, which isn't a fatal condition.
   rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2));
 
-  // Dead-man switch: if the Pi goes quiet mid-drive, stop rather than keep
-  // running the last command. Only meaningful in autonomous mode -- in
-  // teleop nothing is driving the motors in the first place.
-  if (mode == MODE_AUTONOMOUS && millis() - lastCmdVelMs > CMDVEL_TIMEOUT_MS) {
+  // Dead-man switch: either active command source timing out stops the base.
+  unsigned long lastActiveCmdMs = mode == MODE_AUTONOMOUS ? lastCmdVelMs : lastTeleopCmdVelMs;
+  if (millis() - lastActiveCmdMs > CMDVEL_TIMEOUT_MS) {
     stopMotors();
   }
 }
