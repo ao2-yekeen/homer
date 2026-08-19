@@ -135,7 +135,7 @@ class GamepadTeleop(Node):
         if any(arm_deltas):
             self.arm_pub.publish(Int16MultiArray(data=arm_deltas))
             self.arm_command_active = True
-        else:
+        elif not any(arm_axes):
             self.stop_arm()
 
         # LB/RB lower/raise neck while LT is held.
