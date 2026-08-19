@@ -6,7 +6,7 @@ import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
 from sensor_msgs.msg import Joy
-from std_msgs.msg import Int16MultiArray, Int32
+from std_msgs.msg import Bool, Int16MultiArray, Int32
 
 
 class GamepadTeleop(Node):
@@ -21,6 +21,7 @@ class GamepadTeleop(Node):
         self.declare_parameter('neck_min_angle', 80)
         self.declare_parameter('neck_max_angle', 150)
         self.declare_parameter('publish_rate_hz', 20.0)
+        self.declare_parameter('autonomous_exit_hold_s', 1.5)
 
         get = lambda name: self.get_parameter(name).value
         self.max_linear = get('max_linear')
@@ -29,19 +30,24 @@ class GamepadTeleop(Node):
         self.neck_speed_dps = get('neck_speed_dps')
         self.neck_min_angle = get('neck_min_angle')
         self.neck_max_angle = get('neck_max_angle')
+        self.autonomous_exit_hold_s = get('autonomous_exit_hold_s')
         rate_hz = get('publish_rate_hz')
 
         self.drive_pub = self.create_publisher(Twist, 'teleop/cmd_vel', 10)
         self.arm_pub = self.create_publisher(Int16MultiArray, 'soarm/command_delta_ticks', 10)
         self.neck_pub = self.create_publisher(Int32, 'teleop/neck_angle', 10)
+        self.mode_pub = self.create_publisher(Bool, 'set_autonomous', 10)
         self.create_subscription(Joy, 'joy', self.joy_callback, 10)
         self.axes = []
         self.buttons = []
+        self.previous_buttons = []
         self.arm_residual = [0.0] * 6
         self.neck_angle = 90.0
+        self.autonomous = True
+        self.b_hold_started_ns = None
         self.last_tick_ns = self.get_clock().now().nanoseconds
         self.create_timer(1.0 / rate_hz, self.publish_commands)
-        self.get_logger().info('Y/A/X/B drive; hold LT for arm and neck controls.')
+        self.get_logger().info('Autonomous: press A for Teleop. Hold B for 1.5 s to return to Autonomous.')
 
     @staticmethod
     def value(values, index):
@@ -50,7 +56,13 @@ class GamepadTeleop(Node):
     def joy_callback(self, msg):
         self.axes = list(msg.axes)
         self.buttons = list(msg.buttons)
-        # No gamepad mode switch: buttons only command labelled robot actions.
+
+    def set_autonomous(self, enabled):
+        self.autonomous = enabled
+        message = Bool()
+        message.data = enabled
+        self.mode_pub.publish(message)
+        self.get_logger().info(f"Mode -> {'AUTONOMOUS' if enabled else 'TELEOP'}")
 
     def shaped_axis(self, axis):
         value = self.value(self.axes, axis)
@@ -62,6 +74,35 @@ class GamepadTeleop(Node):
         now_ns = self.get_clock().now().nanoseconds
         elapsed_s = max(0.0, (now_ns - self.last_tick_ns) / 1e9)
         self.last_tick_ns = now_ns
+
+        a_pressed = bool(self.value(self.buttons, 0))
+        b_pressed = bool(self.value(self.buttons, 1))
+        a_was_pressed = bool(self.value(self.previous_buttons, 0))
+
+        # A enters Teleop from the safe Autonomous default. A short B remains
+        # turn-right; holding B returns to Autonomous without a vague mode key.
+        if self.autonomous and a_pressed and not a_was_pressed:
+            self.set_autonomous(False)
+            self.previous_buttons = self.buttons.copy()
+            return
+        if not self.autonomous and b_pressed:
+            if self.b_hold_started_ns is None:
+                self.b_hold_started_ns = now_ns
+            elif (now_ns - self.b_hold_started_ns) / 1e9 >= self.autonomous_exit_hold_s:
+                self.set_autonomous(True)
+                self.b_hold_started_ns = None
+                self.previous_buttons = self.buttons.copy()
+                return
+        else:
+            self.b_hold_started_ns = None
+
+        self.previous_buttons = self.buttons.copy()
+        mode_message = Bool()
+        mode_message.data = self.autonomous
+        self.mode_pub.publish(mode_message)
+        if self.autonomous:
+            # No base, arm, or neck command is emitted until A enters Teleop.
+            return
 
         # Y forward, A reverse, X left, B right. Releasing all buttons sends zero.
         drive = Twist()
