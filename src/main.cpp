@@ -5,6 +5,7 @@
 #include <rcl/error_handling.h>
 #include <rclc/rclc.h>
 #include <rclc/executor.h>
+#include <rmw_microros/rmw_microros.h>
 #include <geometry_msgs/msg/twist.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/int32.h>
@@ -73,9 +74,10 @@ rcl_node_t node;
 // out UART2 (pins 16/17) instead. TODO: remove once micro-ROS bring-up is confirmed working.
 void errorLoop(const char *stage, rcl_ret_t rc) {
   Serial2.printf("RCCHECK failed at: %s (rc=%ld)\n", stage, (long)rc);
-  while (true) {
-    delay(100);
-  }
+  // Never continue after a failed rcl/rclc setup step: the partially
+  // initialised object graph is unsafe. Reboot to retry a clean connection.
+  delay(250);
+  ESP.restart();
 }
 #define RCCHECK(stage, fn) { rcl_ret_t rc = fn; if (rc != RCL_RET_OK) { errorLoop(stage, rc); } }
 
@@ -150,7 +152,13 @@ void neckAngleCallback(const void *msgin) {
 void setupMicroRos() {
   Serial.begin(MICRO_ROS_BAUD); // set_microros_serial_transports() does not call begin() itself
   set_microros_serial_transports(Serial);
-  delay(2000);
+
+  // The Pi agent may start after the ESP32. Do not initialise rcl/rclc until
+  // the transport has completed its handshake; retrying is safe because all
+  // motor outputs were stopped before this method was entered.
+  while (rmw_uros_ping_agent(100, 1) != RMW_RET_OK) {
+    delay(500);
+  }
 
   allocator = rcl_get_default_allocator();
   RCCHECK("support_init", rclc_support_init(&support, 0, NULL, &allocator));
