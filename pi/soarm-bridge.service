@@ -1,0 +1,12 @@
+[Unit]
+Description=SO-ARM guarded ROS 2 bridge
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec python3 %h/soarm_ros_bridge.py'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
