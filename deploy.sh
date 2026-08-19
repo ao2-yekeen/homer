@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # Build locally, then push the built binaries to the Pi and flash the ESP32
 # attached to it (over /dev/ttyUSB0) via the Pi's lightweight `esptool`.
-# Usage: ./deploy.sh
+# Usage: ./deploy.sh [esp32dev|servo_sweep]
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$PROJECT_DIR/.pio/build/esp32dev"
-PIO="/home/ao2-yekeen/.platformio/penv/bin/pio"
+ENVIRONMENT="${1:-esp32dev}"
+BUILD_DIR="$PROJECT_DIR/.pio/build/$ENVIRONMENT"
 BOOT_APP0="/home/ao2-yekeen/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
 REMOTE_DIR="~/esp32_fw"
 REMOTE_PORT="/dev/ttyUSB0"
 
-echo "==> Building firmware locally"
+echo "==> Building $ENVIRONMENT firmware locally"
 cd "$PROJECT_DIR"
-"$PIO" run
+python3 -m platformio run -e "$ENVIRONMENT"
 
 echo "==> Copying binaries to pi:$REMOTE_DIR"
 ssh pi "mkdir -p $REMOTE_DIR"
@@ -39,8 +39,12 @@ ssh pi "esptool --chip esp32 --port $REMOTE_PORT --baud 460800 --no-stub \
   0xe000 $REMOTE_DIR/boot_app0.bin \
   0x10000 $REMOTE_DIR/firmware.bin" || flash_status=$?
 
-echo "==> Reclaiming $REMOTE_PORT (restarting micro-ros-agent)"
-ssh pi "systemctl --user start micro-ros-agent"
+if [ "$ENVIRONMENT" = "esp32dev" ]; then
+  echo "==> Reclaiming $REMOTE_PORT (restarting micro-ros-agent)"
+  ssh pi "systemctl --user start micro-ros-agent"
+else
+  echo "==> Leaving micro-ros-agent stopped for the servo-only test"
+fi
 
 if [ "$flash_status" -ne 0 ]; then
   echo "==> Flash FAILED (exit $flash_status)"
