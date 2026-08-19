@@ -1,10 +1,10 @@
 [Unit]
-Description=Gamepad teleop -> /cmd_vel (joy + teleop_twist_joy)
+Description=Direct gamepad teleoperation for base, SO-ARM, and neck
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 launch teleop_twist_joy teleop-launch.py joy_config:=ps3'
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && ros2 run joy joy_node & exec python3 %h/gamepad_teleop.py'
 Restart=on-failure
 RestartSec=2
 
