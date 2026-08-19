@@ -1,30 +1,34 @@
 # Gamepad teleoperation
 
-The service starts the ROS 2 joystick driver and `gamepad_teleop.py`, which
-uses `/joy` to publish every manual control path:
+The service starts the ROS 2 joystick driver and `gamepad_teleop.py`. There is
+no controller mode and no **Select** action: every input has one direct robot
+action.
 
-| Gamepad control (default PS3 mapping) | Robot action |
+| Gamepad control (Xbox-labelled Aurora receiver) | Robot action |
 | --- | --- |
-| Hold **L1** + left stick up/down | Drive forward/reverse |
-| Hold **L1** + left stick left/right | Turn |
-| D-pad up/down | Move the neck within the tested 80--150 degree range |
-| **Select** | Enter Teleop mode |
-| **L3** | Enter Autonomous mode |
+| Hold **Y** | Drive forward |
+| Hold **A** | Drive backward |
+| Hold **X** | Turn left |
+| Hold **B** | Turn right |
+| Hold **LT** + left stick left/right | Shoulder pan |
+| Hold **LT** + left stick up/down | Shoulder lift |
+| Hold **LT** + right stick left/right | Elbow flex |
+| Hold **LT** + right stick up/down | Wrist flex |
+| Hold **LT** + D-pad left/right | Wrist roll |
+| Hold **LT** + D-pad up/down | Gripper |
+| Hold **LT** + **LB** / **RB** | Lower / raise neck, limited to 80--150 degrees |
 
-The firmware accepts `/teleop/cmd_vel` only in Teleop mode. Autonomous
-movement remains on `/cmd_vel`, so the gamepad cannot command the base in
-Autonomous mode. Releasing L1 sends zero drive commands. The ESP32 also stops
-the base if its active command stream is stale for one second.
+LT is the arm dead-man: releasing it immediately stops arm and neck commands.
+The ESP32 also stops the base if its active command stream is stale for one
+second. The gamepad uses the standard Xbox-labelled layout; check each joint's
+direction in a clear workspace before normal use because a motor's installed
+direction is mechanical.
 
-The button and axis values are parameters in `gamepad_teleop.py`. Before
-driving, confirm the controller's indices without moving the robot:
+Before driving, confirm that `/joy` is present without moving the robot:
 
 ```bash
 ros2 topic echo /joy
 ```
-
-Override an index in the systemd service by appending, for example,
-`--ros-args -p drive_enable_button:=<index>` to its `ExecStart` command.
 
 ## Install on the Pi
 
@@ -37,10 +41,11 @@ systemctl --user disable --now mode-toggle.service
 systemctl --user enable --now gamepad-teleop.service
 ```
 
-After flashing the matching ESP32 firmware, verify the topics before placing
-the robot on the floor:
+For an arm-only test, leave the base off the floor or remap the drive topic to
+an unused name. Verify the topics before moving hardware:
 
 ```bash
 ros2 topic echo /teleop/cmd_vel
 ros2 topic echo /teleop/neck_angle
+ros2 topic echo /soarm/command_delta_ticks
 ```
