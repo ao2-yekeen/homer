@@ -1,10 +1,12 @@
 [Unit]
 Description=Arm-only gamepad test (base commands disabled)
 After=network.target
+Requires=gamepad-joy.service
+After=gamepad-joy.service
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash; ros2 run joy joy_node --ros-args -p dev:=/dev/input/js0 -p autorepeat_rate:=20.0 & exec python3 %h/gamepad_teleop.py --ros-args -r /teleop/cmd_vel:=/arm_test/disabled_cmd_vel'
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec python3 %h/gamepad_teleop.py --ros-args -r /teleop/cmd_vel:=/arm_test/disabled_cmd_vel'
 Restart=on-failure
 RestartSec=2
 
