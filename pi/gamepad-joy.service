@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 run joy joy_node --ros-args -p dev:=/dev/input/js0 -p autorepeat_rate:=20.0'
+ExecStart=/usr/bin/sg input -c '/bin/bash -lc "source /opt/ros/jazzy/setup.bash && exec ros2 run joy joy_node --ros-args -p dev:=/dev/input/js0 -p autorepeat_rate:=20.0"'
 Restart=on-failure
 RestartSec=2
 
