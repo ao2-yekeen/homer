@@ -52,6 +52,7 @@ class SoArmBridge(Node):
         self.motion_active = False
         self.last_motion_command_s = time.monotonic()
         self._verify_servos()
+        self.targets = self.read_positions()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
@@ -94,6 +95,7 @@ class SoArmBridge(Node):
         """Cancel any remaining position trajectory by targeting each live position."""
         with self.lock:
             current = self.read_positions()
+            self.targets = current
             for servo_id, position in zip(SERVO_IDS, current):
                 result, error = self.packet.WritePosEx(
                     servo_id, position, SLOW_SPEED, SLOW_ACCELERATION
@@ -129,10 +131,9 @@ class SoArmBridge(Node):
             return
         try:
             with self.lock:
-                current = self.read_positions()
                 targets = [
                     max(SERVO_TICK_MIN, min(SERVO_TICK_MAX, position + delta))
-                    for position, delta in zip(current, requested)
+                    for position, delta in zip(self.targets, requested)
                 ]
                 for servo_id, delta, target in zip(SERVO_IDS, requested, targets):
                     if delta == 0:
@@ -145,6 +146,7 @@ class SoArmBridge(Node):
                             f"Write failed for servo {servo_id} "
                             f"(result={result}, error={error})"
                         )
+                self.targets = targets
             self.motion_active = True
             self.last_motion_command_s = time.monotonic()
             self.get_logger().info(f"Applied capped delta {requested}; targets {targets}")
