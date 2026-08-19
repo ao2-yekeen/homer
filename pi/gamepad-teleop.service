@@ -4,7 +4,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash; ros2 run joy joy_node & exec python3 %h/gamepad_teleop.py'
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash; ros2 run joy joy_node --ros-args -p dev:=/dev/input/js0 -p autorepeat_rate:=20.0 & exec python3 %h/gamepad_teleop.py'
 Restart=on-failure
 RestartSec=2
 
