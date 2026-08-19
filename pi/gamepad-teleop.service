@@ -1,0 +1,12 @@
+[Unit]
+Description=Gamepad teleop -> /cmd_vel (joy + teleop_twist_joy)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 launch teleop_twist_joy teleop-launch.py joy_config:=ps3'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
