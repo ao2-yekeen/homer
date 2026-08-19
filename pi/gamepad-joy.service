@@ -1,0 +1,12 @@
+[Unit]
+Description=ROS 2 joystick driver for the Xbox controller
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec ros2 run joy joy_node --ros-args -p dev:=/dev/input/js0 -p autorepeat_rate:=20.0'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
