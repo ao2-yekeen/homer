@@ -1,15 +1,18 @@
 # Gamepad teleoperation
 
-The service starts the ROS 2 joystick driver and `gamepad_teleop.py`. There is
-no controller mode and no **Select** action: every input has one direct robot
-action.
+The service starts the ROS 2 joystick driver and `gamepad_teleop.py`. The safe
+default is Autonomous. Press the labelled **A** button once to enter Teleop;
+hold the labelled **B** button for 1.5 seconds to return to Autonomous. There
+is no **Select** action.
 
 | Gamepad control (Xbox-labelled Aurora receiver) | Robot action |
 | --- | --- |
-| Hold **Y** | Drive forward |
-| Hold **A** | Drive backward |
-| Hold **X** | Turn left |
-| Hold **B** | Turn right |
+| Press **A** while Autonomous | Enter Teleop |
+| Hold **Y** while Teleop | Drive forward |
+| Hold **A** while Teleop | Drive backward |
+| Hold **X** while Teleop | Turn left |
+| Briefly hold **B** while Teleop | Turn right |
+| Hold **B** for 1.5 seconds while Teleop | Return to Autonomous |
 | Hold **LT** + left stick left/right | Shoulder pan |
 | Hold **LT** + left stick up/down | Shoulder lift |
 | Hold **LT** + right stick left/right | Elbow flex |
