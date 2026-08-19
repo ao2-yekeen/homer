@@ -42,6 +42,7 @@ class GamepadTeleop(Node):
         self.buttons = []
         self.previous_buttons = []
         self.arm_residual = [0.0] * 6
+        self.arm_command_active = False
         self.neck_angle = 90.0
         self.autonomous = True
         self.b_hold_started_ns = None
@@ -69,6 +70,12 @@ class GamepadTeleop(Node):
         if abs(value) <= self.deadzone:
             return 0.0
         return math.copysign((abs(value) - self.deadzone) / (1.0 - self.deadzone), value)
+
+    def stop_arm(self):
+        """Tell the bridge to hold at its current measured position once."""
+        if self.arm_command_active:
+            self.arm_pub.publish(Int16MultiArray(data=[0] * 6))
+            self.arm_command_active = False
 
     def publish_commands(self):
         now_ns = self.get_clock().now().nanoseconds
@@ -115,6 +122,7 @@ class GamepadTeleop(Node):
         arm_enabled = self.value(self.axes, 2) < 0.0
         if not arm_enabled:
             self.arm_residual = [0.0] * 6
+            self.stop_arm()
             return
         arm_axes = (self.shaped_axis(0), self.shaped_axis(1), self.shaped_axis(3),
                     self.shaped_axis(4), self.shaped_axis(6), self.shaped_axis(7))
@@ -126,6 +134,9 @@ class GamepadTeleop(Node):
             arm_deltas.append(delta)
         if any(arm_deltas):
             self.arm_pub.publish(Int16MultiArray(data=arm_deltas))
+            self.arm_command_active = True
+        else:
+            self.stop_arm()
 
         # LB/RB lower/raise neck while LT is held.
         neck_axis = self.value(self.buttons, 5) - self.value(self.buttons, 4)
