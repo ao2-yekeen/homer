@@ -17,6 +17,7 @@ class GamepadTeleop(Node):
         self.declare_parameter('max_linear', 0.7)
         self.declare_parameter('max_angular', 0.4)
         self.declare_parameter('deadzone', 0.08)
+        self.declare_parameter('arm_speed_ticks_s', 100.0)
         self.declare_parameter('neck_speed_dps', 20.0)
         self.declare_parameter('neck_min_angle', 80)
         self.declare_parameter('neck_max_angle', 150)
@@ -27,6 +28,7 @@ class GamepadTeleop(Node):
         self.max_linear = get('max_linear')
         self.max_angular = get('max_angular')
         self.deadzone = get('deadzone')
+        self.arm_speed_ticks_s = get('arm_speed_ticks_s')
         self.neck_speed_dps = get('neck_speed_dps')
         self.neck_min_angle = get('neck_min_angle')
         self.neck_max_angle = get('neck_max_angle')
@@ -128,8 +130,8 @@ class GamepadTeleop(Node):
                     self.shaped_axis(4), self.shaped_axis(6), self.shaped_axis(7))
         arm_deltas = []
         for index, axis in enumerate(arm_axes):
-            total = self.arm_residual[index] + axis * 10.0 * elapsed_s
-            delta = max(-2, min(2, int(total)))
+            total = self.arm_residual[index] + axis * self.arm_speed_ticks_s * elapsed_s
+            delta = max(-5, min(5, int(total)))
             self.arm_residual[index] = total - delta
             arm_deltas.append(delta)
         if any(arm_deltas):
