@@ -35,6 +35,17 @@ SERVO_NAMES = (
 # must not be used to correct live positions. STS position registers are 0–4095.
 SERVO_TICK_MIN = 0
 SERVO_TICK_MAX = 4095
+# Joint 2 (shoulder lift) approaches the neck as its tick value decreases.
+# The measured clear, non-contact position was 1359.  Keep a ~90-tick margin
+# so that all ROS commands are contained outside the collision zone.
+JOINT_TICK_LIMITS = (
+    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # shoulder_pan
+    (1450, 2443),  # shoulder_lift: neck-collision guard (servo EEPROM range)
+    (890, 2506),  # elbow_flex: body-clearance limit (servo EEPROM range)
+    (2438, 3233),  # wrist_flex: gripper/body clearance (servo EEPROM range)
+    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # wrist_roll
+    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # gripper
+)
 MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
@@ -45,9 +56,9 @@ class SoArmBridge(Node):
     def __init__(self) -> None:
         super().__init__("soarm_bridge")
         self.lock = threading.Lock()
-        self.port = PortHandler("/dev/ttyACM0")
+        self.port = PortHandler("/dev/robot-soarm")
         if not self.port.openPort() or not self.port.setBaudRate(1_000_000):
-            raise RuntimeError("Cannot open SO-ARM at /dev/ttyACM0, 1,000,000 baud")
+            raise RuntimeError("Cannot open SO-ARM at /dev/robot-soarm, 1,000,000 baud")
         self.packet = sts(self.port)
         self.motion_active = False
         self.last_motion_command_s = time.monotonic()
@@ -105,6 +116,21 @@ class SoArmBridge(Node):
                         f"Hold failed for servo {servo_id} (result={result}, error={error})"
                     )
 
+    @staticmethod
+    def bounded_target(current: int, delta: int, minimum: int, maximum: int) -> int:
+        """Constrain a target without forcing a sudden recovery move.
+
+        A servo found outside its allowed interval may only move toward the
+        interval. This retains the normal per-command delta cap while blocking
+        any command that would move farther into a forbidden region.
+        """
+        proposed = current + delta
+        if current < minimum:
+            return max(current, proposed)
+        if current > maximum:
+            return min(current, proposed)
+        return max(minimum, min(maximum, proposed))
+
     def stop_motion(self, reason: str) -> None:
         if not self.motion_active:
             return
@@ -132,8 +158,10 @@ class SoArmBridge(Node):
         try:
             with self.lock:
                 targets = [
-                    max(SERVO_TICK_MIN, min(SERVO_TICK_MAX, position + delta))
-                    for position, delta in zip(self.targets, requested)
+                    self.bounded_target(position, delta, minimum, maximum)
+                    for position, delta, (minimum, maximum) in zip(
+                        self.targets, requested, JOINT_TICK_LIMITS
+                    )
                 ]
                 for servo_id, delta, target in zip(SERVO_IDS, requested, targets):
                     if delta == 0:

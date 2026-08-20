@@ -1,224 +1,361 @@
 #include <Arduino.h>
 
-#include <micro_ros_platformio.h>
-#include <rcl/rcl.h>
-#include <rcl/error_handling.h>
-#include <rclc/rclc.h>
-#include <rclc/executor.h>
-#include <rmw_microros/rmw_microros.h>
 #include <geometry_msgs/msg/twist.h>
+#include <nav_msgs/msg/odometry.h>
+#include <micro_ros_platformio.h>
+#include <rcl/error_handling.h>
+#include <rcl/rcl.h>
+#include <rclc/executor.h>
+#include <rclc/rclc.h>
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/int32.h>
 
-// Motor A = right side, Motor B = left side (mirror-mounted, so its
-// direction pins are flipped relative to Motor A for the same physical
-// direction of travel).
-const int AIN1 = 25;
-const int AIN2 = 33;
-const int PWMA = 32;
+namespace {
 
-const int BIN1 = 27;
-const int BIN2 = 14;
-const int PWMB = 12;
+constexpr uint32_t kMicroRosBaud = 921600;
+constexpr uint32_t kCommandTimeoutMs = 1000;
 
-const int PWM_CH_A = 0;
-const int PWM_CH_B = 1;
-const int PWM_FREQ = 5000;
-const int PWM_RES = 8;
-const int PWM_MAX_DUTY = (1 << PWM_RES) - 1;
-
-// Servo on a separate LEDC channel/timer (50Hz, 16-bit) so it doesn't
-// collide with the motor PWM channels above.
-const int SERVO_PIN = 2;
-const int PWM_CH_SERVO = 2;
-const int SERVO_FREQ = 50;
-const int SERVO_RES = 16;
-
-// Most hobby servos respond to a wider pulse range than the "standard"
-// 1000-2000us, giving closer to the full mechanical 0-180 degree sweep.
-const int SERVO_MIN_US = 500;
-const int SERVO_MAX_US = 2500;
-
-const unsigned long MICRO_ROS_BAUD = 921600; // must match `micro_ros_agent serial -b <baud>` on the Pi
-
-// AUTONOMOUS = obey /cmd_vel. TELEOP = obey /teleop/cmd_vel. Keeping the
-// sources separate prevents a gamepad command driving in autonomous mode.
-enum RobotMode { MODE_TELEOP, MODE_AUTONOMOUS };
-RobotMode mode = MODE_TELEOP; // safe default: robot stays put until the Pi explicitly opts in
-
-unsigned long lastCmdVelMs = 0;
-unsigned long lastTeleopCmdVelMs = 0;
-const unsigned long CMDVEL_TIMEOUT_MS = 1000; // stop if active Pi stream goes quiet
-
-// cmd_vel -> wheel duty conversion. Untuned placeholders: linear.x in m/s,
-// angular.z in rad/s, scaled directly to PWM duty. Retune SPEED_SCALE/
-// TURN_SCALE once you know real wheel radius/track width.
-const float SPEED_SCALE = 120.0f; // duty per m/s
-const float TURN_SCALE = 60.0f;   // duty per rad/s
-
-// ---- micro-ROS ----
-rcl_subscription_t cmdVelSub;
-geometry_msgs__msg__Twist cmdVelMsg;
-rcl_subscription_t teleopCmdVelSub;
-geometry_msgs__msg__Twist teleopCmdVelMsg;
-rcl_subscription_t setAutonomousSub;
-std_msgs__msg__Bool setAutonomousMsg;
-rcl_subscription_t neckAngleSub;
-std_msgs__msg__Int32 neckAngleMsg;
-rclc_executor_t executor;
-rclc_support_t support;
-rcl_allocator_t allocator;
-rcl_node_t node;
-
-// Serial (USB) is dedicated to the micro-ROS transport, so debug output goes
-// out UART2 (pins 16/17) instead. TODO: remove once micro-ROS bring-up is confirmed working.
-void errorLoop(const char *stage, rcl_ret_t rc) {
-  Serial2.printf("RCCHECK failed at: %s (rc=%ld)\n", stage, (long)rc);
-  // Never continue after a failed rcl/rclc setup step: the partially
-  // initialised object graph is unsafe. Reboot to retry a clean connection.
-  delay(250);
-  ESP.restart();
-}
-#define RCCHECK(stage, fn) { rcl_ret_t rc = fn; if (rc != RCL_RET_OK) { errorLoop(stage, rc); } }
-
-void setServoAngle(int angle) {
-  angle = constrain(angle, 0, 180);
-  int pulseUs = map(angle, 0, 180, SERVO_MIN_US, SERVO_MAX_US);
-  int duty = (int)((float)pulseUs / (1000000.0f / SERVO_FREQ) * ((1 << SERVO_RES) - 1));
-  ledcWrite(PWM_CH_SERVO, duty);
-}
-
-// duty sign is "forward" in the direction of travel; the A/B pin-level
-// mirroring that makes that true is handled here, once.
-void driveMotorA(int duty) {
-  digitalWrite(AIN1, duty >= 0 ? HIGH : LOW);
-  digitalWrite(AIN2, duty >= 0 ? LOW : HIGH);
-  ledcWrite(PWM_CH_A, abs(duty));
-}
-
-void driveMotorB(int duty) {
-  digitalWrite(BIN1, duty >= 0 ? LOW : HIGH);
-  digitalWrite(BIN2, duty >= 0 ? HIGH : LOW);
-  ledcWrite(PWM_CH_B, abs(duty));
-}
-
-void setMotors(int leftDuty, int rightDuty) {
-  leftDuty = constrain(leftDuty, -PWM_MAX_DUTY, PWM_MAX_DUTY);
-  rightDuty = constrain(rightDuty, -PWM_MAX_DUTY, PWM_MAX_DUTY);
-  driveMotorB(leftDuty);
-  driveMotorA(rightDuty);
-}
-
-void stopMotors() {
-  setMotors(0, 0);
-}
-
-void setMode(RobotMode newMode) {
-  mode = newMode;
-  stopMotors();
-}
-
-void applyTwist(const geometry_msgs__msg__Twist *msg) {
-  float linear = (float)msg->linear.x;
-  float angular = (float)msg->angular.z;
-  int leftDuty = (int)(linear * SPEED_SCALE - angular * TURN_SCALE);
-  int rightDuty = (int)(linear * SPEED_SCALE + angular * TURN_SCALE);
-  setMotors(leftDuty, rightDuty);
-}
-
-void cmdVelCallback(const void *msgin) {
-  const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
-  lastCmdVelMs = millis();
-  if (mode == MODE_AUTONOMOUS) applyTwist(msg);
-}
-
-void teleopCmdVelCallback(const void *msgin) {
-  const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msgin;
-  lastTeleopCmdVelMs = millis();
-  if (mode == MODE_TELEOP) applyTwist(msg);
-}
-
-void setAutonomousCallback(const void *msgin) {
-  const std_msgs__msg__Bool *msg = (const std_msgs__msg__Bool *)msgin;
-  setMode(msg->data ? MODE_AUTONOMOUS : MODE_TELEOP);
-}
-
-void neckAngleCallback(const void *msgin) {
-  const std_msgs__msg__Int32 *msg = (const std_msgs__msg__Int32 *)msgin;
-  // This is the conservative clearance range established by servo_sweep.
-  setServoAngle(constrain(msg->data, 80, 150));
-}
-
-void setupMicroRos() {
-  Serial.begin(MICRO_ROS_BAUD); // set_microros_serial_transports() does not call begin() itself
-  set_microros_serial_transports(Serial);
-
-  // The Pi agent may start after the ESP32. Do not initialise rcl/rclc until
-  // the transport has completed its handshake; retrying is safe because all
-  // motor outputs were stopped before this method was entered.
-  while (rmw_uros_ping_agent(100, 1) != RMW_RET_OK) {
-    delay(500);
+class WheelEncoders {
+ public:
+  void begin() {
+    pinMode(kRightA, INPUT);
+    pinMode(kRightB, INPUT);
+    pinMode(kLeftA, INPUT);
+    pinMode(kLeftB, INPUT);
+    right_state_ = read(kRightA, kRightB);
+    left_state_ = read(kLeftA, kLeftB);
+    instance_ = this;
+    attachInterrupt(digitalPinToInterrupt(kRightA), onRight, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(kRightB), onRight, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(kLeftA), onLeft, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(kLeftB), onLeft, CHANGE);
   }
 
-  allocator = rcl_get_default_allocator();
-  RCCHECK("support_init", rclc_support_init(&support, 0, NULL, &allocator));
-  RCCHECK("node_init", rclc_node_init_default(&node, "esp32_robot_node", "", &support));
-  RCCHECK("sub_init", rclc_subscription_init_default(
-      &cmdVelSub, &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-      "cmd_vel"));
-  RCCHECK("teleop_sub_init", rclc_subscription_init_default(
-      &teleopCmdVelSub, &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-      "teleop/cmd_vel"));
-  RCCHECK("mode_sub_init", rclc_subscription_init_default(
-      &setAutonomousSub, &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-      "set_autonomous"));
-  RCCHECK("neck_sub_init", rclc_subscription_init_default(
-      &neckAngleSub, &node,
-      ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-      "teleop/neck_angle"));
-  RCCHECK("executor_init", rclc_executor_init(&executor, &support.context, 4, &allocator));
-  RCCHECK("executor_add_sub", rclc_executor_add_subscription(&executor, &cmdVelSub, &cmdVelMsg, &cmdVelCallback, ON_NEW_DATA));
-  RCCHECK("executor_add_teleop_sub", rclc_executor_add_subscription(&executor, &teleopCmdVelSub, &teleopCmdVelMsg, &teleopCmdVelCallback, ON_NEW_DATA));
-  RCCHECK("executor_add_mode_sub", rclc_executor_add_subscription(&executor, &setAutonomousSub, &setAutonomousMsg, &setAutonomousCallback, ON_NEW_DATA));
-  RCCHECK("executor_add_neck_sub", rclc_executor_add_subscription(&executor, &neckAngleSub, &neckAngleMsg, &neckAngleCallback, ON_NEW_DATA));
-}
+  void readCounts(int32_t& left, int32_t& right) {
+    noInterrupts();
+    left = left_count_;
+    right = right_count_;
+    interrupts();
+  }
+
+ private:
+  static constexpr uint8_t kRightA = 23;
+  static constexpr uint8_t kRightB = 22;
+  static constexpr uint8_t kLeftA = 4;
+  static constexpr uint8_t kLeftB = 19;
+  volatile int32_t left_count_ = 0;
+  volatile int32_t right_count_ = 0;
+  volatile uint8_t left_state_ = 0;
+  volatile uint8_t right_state_ = 0;
+  static inline WheelEncoders* instance_ = nullptr;
+
+  static uint8_t read(uint8_t a, uint8_t b) { return (digitalRead(a) << 1) | digitalRead(b); }
+  static int8_t delta(uint8_t index) {
+    static const int8_t table[16] = {0, -1, 1, 0, 1, 0, 0, -1,
+                                     -1, 0, 0, 1, 0, 1, -1, 0};
+    return table[index];
+  }
+  static void IRAM_ATTR onRight() { instance_->rightCount(); }
+  static void IRAM_ATTR onLeft() { instance_->leftCount(); }
+  void rightCount() {
+    const uint8_t state = read(kRightA, kRightB);
+    right_count_ += delta((right_state_ << 2) | state);
+    right_state_ = state;
+  }
+  void leftCount() {
+    const uint8_t state = read(kLeftA, kLeftB);
+    left_count_ += delta((left_state_ << 2) | state);
+    left_state_ = state;
+  }
+};
+
+class Odometry {
+ public:
+  void begin(WheelEncoders& encoders) {
+    encoders_ = &encoders;
+    encoders_->readCounts(last_left_, last_right_);
+    last_ms_ = millis();
+  }
+
+  void update(nav_msgs__msg__Odometry& message) {
+    const uint32_t now = millis();
+    if (now == last_ms_) return;
+    const uint32_t elapsed_ms = now - last_ms_;
+    int32_t left, right;
+    encoders_->readCounts(left, right);
+    const double dl = (left - last_left_) * kMetersPerTick;
+    const double dr = (right - last_right_) * kMetersPerTick;
+    const double distance = (dl + dr) * 0.5;
+    const double heading_delta = (dr - dl) / kTrackWidth;
+    x_ += distance * cos(theta_ + heading_delta * 0.5);
+    y_ += distance * sin(theta_ + heading_delta * 0.5);
+    theta_ += heading_delta;
+    last_left_ = left;
+    last_right_ = right;
+    last_ms_ = now;
+    message.header.stamp.sec = static_cast<int32_t>(now / 1000);
+    message.header.stamp.nanosec = (now % 1000) * 1000000UL;
+    message.pose.pose.position.x = x_;
+    message.pose.pose.position.y = y_;
+    message.pose.pose.orientation.z = sin(theta_ * 0.5);
+    message.pose.pose.orientation.w = cos(theta_ * 0.5);
+    message.twist.twist.linear.x = distance * 1000.0 / elapsed_ms;
+    message.twist.twist.angular.z = heading_delta * 1000.0 / elapsed_ms;
+  }
+
+ private:
+  // Calibration placeholders: verify encoder CPR, wheel diameter, and track.
+  static constexpr double kMetersPerTick = (0.065 * PI) / 360.0;
+  static constexpr double kTrackWidth = 0.23;
+  WheelEncoders* encoders_ = nullptr;
+  int32_t last_left_ = 0, last_right_ = 0;
+  uint32_t last_ms_ = 0;
+  double x_ = 0.0, y_ = 0.0, theta_ = 0.0;
+};
+
+class DifferentialDrive {
+ public:
+  void begin() {
+    pinMode(kRightIn1, OUTPUT);
+    pinMode(kRightIn2, OUTPUT);
+    pinMode(kLeftIn1, OUTPUT);
+    pinMode(kLeftIn2, OUTPUT);
+    ledcSetup(kRightPwmChannel, kPwmFrequency, kPwmResolution);
+    ledcAttachPin(kRightPwmPin, kRightPwmChannel);
+    ledcSetup(kLeftPwmChannel, kPwmFrequency, kPwmResolution);
+    ledcAttachPin(kLeftPwmPin, kLeftPwmChannel);
+    stop();
+  }
+
+  void command(float linear, float angular) {
+    const int left = static_cast<int>(linear * kLinearScale - angular * kAngularScale);
+    const int right = static_cast<int>(linear * kLinearScale + angular * kAngularScale);
+    setWheelDuty(left, right);
+  }
+
+  void stop() { setWheelDuty(0, 0); }
+
+ private:
+  static constexpr int kRightIn1 = 25;
+  static constexpr int kRightIn2 = 33;
+  static constexpr int kRightPwmPin = 32;
+  static constexpr int kLeftIn1 = 27;
+  static constexpr int kLeftIn2 = 14;
+  static constexpr int kLeftPwmPin = 12;
+  static constexpr int kRightPwmChannel = 0;
+  static constexpr int kLeftPwmChannel = 1;
+  static constexpr int kPwmFrequency = 5000;
+  static constexpr int kPwmResolution = 8;
+  static constexpr int kMaxDuty = (1 << kPwmResolution) - 1;
+  // Conservative initial scale; tune only after a lifted-wheel test.
+  static constexpr float kLinearScale = 120.0f;
+  static constexpr float kAngularScale = 60.0f;
+
+  void setWheelDuty(int left, int right) {
+    left = constrain(left, -kMaxDuty, kMaxDuty);
+    right = constrain(right, -kMaxDuty, kMaxDuty);
+    // Left motor is mirror mounted, so identical physical directions need
+    // opposite pin levels.
+    digitalWrite(kRightIn1, right >= 0 ? HIGH : LOW);
+    digitalWrite(kRightIn2, right >= 0 ? LOW : HIGH);
+    digitalWrite(kLeftIn1, left >= 0 ? LOW : HIGH);
+    digitalWrite(kLeftIn2, left >= 0 ? HIGH : LOW);
+    ledcWrite(kRightPwmChannel, abs(right));
+    ledcWrite(kLeftPwmChannel, abs(left));
+  }
+};
+
+class NeckServo {
+ public:
+  void begin() {
+    ledcSetup(kPwmChannel, kFrequency, kResolution);
+    ledcAttachPin(kPin, kPwmChannel);
+    current_angle_ = kSafeCenterAngle;
+    target_angle_ = kSafeCenterAngle;
+    writeAngle(current_angle_);
+    last_step_ms_ = millis();
+  }
+
+  void setTargetAngle(int angle) {
+    target_angle_ = constrain(angle, kMinimumAngle, kMaximumAngle);
+  }
+
+  void update() {
+    if (millis() - last_step_ms_ < kStepIntervalMs || current_angle_ == target_angle_) return;
+    last_step_ms_ = millis();
+    current_angle_ += current_angle_ < target_angle_ ? 1 : -1;
+    writeAngle(current_angle_);
+  }
+
+ private:
+  void writeAngle(int angle) {
+    const int pulse_us = map(angle, 0, 180, kMinimumPulseUs, kMaximumPulseUs);
+    const uint32_t duty = static_cast<uint32_t>(pulse_us) * ((1UL << kResolution) - 1) /
+                          (1000000UL / kFrequency);
+    ledcWrite(kPwmChannel, duty);
+  }
+
+  static constexpr int kPin = 2;
+  static constexpr int kPwmChannel = 2;
+  static constexpr int kFrequency = 50;
+  static constexpr int kResolution = 16;
+  static constexpr int kMinimumPulseUs = 500;
+  static constexpr int kMaximumPulseUs = 2500;
+  // The installed neck was only mechanically tested through this interval.
+  static constexpr int kMinimumAngle = 80;
+  static constexpr int kMaximumAngle = 150;
+  static constexpr int kSafeCenterAngle = 120;
+  static constexpr uint32_t kStepIntervalMs = 50;
+  int current_angle_ = kSafeCenterAngle;
+  int target_angle_ = kSafeCenterAngle;
+  uint32_t last_step_ms_ = 0;
+};
+
+enum class RobotMode { kTeleop, kAutonomous };
+
+class RobotController {
+ public:
+  void begin() {
+    encoders_.begin();
+    odometry_.begin(encoders_);
+    drive_.begin();
+    neck_.begin();
+    last_autonomous_command_ms_ = millis();
+    last_teleop_command_ms_ = last_autonomous_command_ms_;
+  }
+
+  void setMode(RobotMode mode) {
+    mode_ = mode;
+    drive_.stop();
+  }
+
+  void onAutonomousCommand(const geometry_msgs__msg__Twist& command) {
+    last_autonomous_command_ms_ = millis();
+    if (mode_ == RobotMode::kAutonomous) drive_.command(command.linear.x, command.angular.z);
+  }
+
+  void onTeleopCommand(const geometry_msgs__msg__Twist& command) {
+    last_teleop_command_ms_ = millis();
+    if (mode_ == RobotMode::kTeleop) drive_.command(command.linear.x, command.angular.z);
+  }
+
+  void onNeckCommand(int angle) { neck_.setTargetAngle(angle); }
+  void update() { neck_.update(); }
+  void updateOdometry(nav_msgs__msg__Odometry& message) { odometry_.update(message); }
+
+  void enforceTimeout() {
+    const uint32_t last_command = mode_ == RobotMode::kTeleop
+                                      ? last_teleop_command_ms_
+                                      : last_autonomous_command_ms_;
+    if (millis() - last_command > kCommandTimeoutMs) drive_.stop();
+  }
+
+ private:
+  DifferentialDrive drive_;
+  WheelEncoders encoders_;
+  Odometry odometry_;
+  NeckServo neck_;
+  RobotMode mode_ = RobotMode::kAutonomous;
+  uint32_t last_autonomous_command_ms_ = 0;
+  uint32_t last_teleop_command_ms_ = 0;
+};
+
+class MicroRosBridge {
+ public:
+  explicit MicroRosBridge(RobotController& controller) : controller_(controller) {}
+
+  void begin() {
+    instance_ = this;
+    Serial.begin(kMicroRosBaud);
+    set_microros_serial_transports(Serial);
+    delay(2000);
+
+    allocator_ = rcl_get_default_allocator();
+    check(rclc_support_init(&support_, 0, nullptr, &allocator_));
+    check(rclc_node_init_default(&node_, "mobile_robot", "", &support_));
+    check(rclc_subscription_init_default(&autonomous_sub_, &node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "cmd_vel"));
+    check(rclc_subscription_init_default(&teleop_sub_, &node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "teleop/cmd_vel"));
+    check(rclc_subscription_init_default(&mode_sub_, &node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool), "set_autonomous"));
+    check(rclc_subscription_init_default(&neck_sub_, &node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32), "teleop/neck_angle"));
+    check(rclc_publisher_init_default(&odom_pub_, &node_,
+        ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry), "odom"));
+    odom_message_.header.frame_id.data = const_cast<char*>("odom");
+    odom_message_.header.frame_id.size = 4;
+    odom_message_.header.frame_id.capacity = 5;
+    odom_message_.child_frame_id.data = const_cast<char*>("base_link");
+    odom_message_.child_frame_id.size = 9;
+    odom_message_.child_frame_id.capacity = 10;
+    odom_message_.pose.pose.orientation.w = 1.0;
+    check(rclc_executor_init(&executor_, &support_.context, 4, &allocator_));
+    check(rclc_executor_add_subscription(&executor_, &autonomous_sub_, &autonomous_message_, &onAutonomous, ON_NEW_DATA));
+    check(rclc_executor_add_subscription(&executor_, &teleop_sub_, &teleop_message_, &onTeleop, ON_NEW_DATA));
+    check(rclc_executor_add_subscription(&executor_, &mode_sub_, &mode_message_, &onMode, ON_NEW_DATA));
+    check(rclc_executor_add_subscription(&executor_, &neck_sub_, &neck_message_, &onNeck, ON_NEW_DATA));
+  }
+
+  void spin() {
+    rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(2));
+    if (millis() - last_odom_publish_ms_ >= kOdomPeriodMs) {
+      last_odom_publish_ms_ = millis();
+      controller_.updateOdometry(odom_message_);
+      rcl_publish(&odom_pub_, &odom_message_, nullptr);
+    }
+  }
+
+ private:
+  static inline MicroRosBridge* instance_ = nullptr;
+  RobotController& controller_;
+  rcl_allocator_t allocator_{};
+  rclc_support_t support_{};
+  rcl_node_t node_{};
+  rclc_executor_t executor_{};
+  rcl_subscription_t autonomous_sub_{};
+  rcl_subscription_t teleop_sub_{};
+  rcl_subscription_t mode_sub_{};
+  rcl_subscription_t neck_sub_{};
+  rcl_publisher_t odom_pub_{};
+  geometry_msgs__msg__Twist autonomous_message_{};
+  geometry_msgs__msg__Twist teleop_message_{};
+  std_msgs__msg__Bool mode_message_{};
+  std_msgs__msg__Int32 neck_message_{};
+  nav_msgs__msg__Odometry odom_message_{};
+  uint32_t last_odom_publish_ms_ = 0;
+  static constexpr uint32_t kOdomPeriodMs = 50;
+
+  static void check(rcl_ret_t result) {
+    if (result != RCL_RET_OK) while (true) delay(100);
+  }
+  static void onAutonomous(const void* message) {
+    instance_->controller_.onAutonomousCommand(*static_cast<const geometry_msgs__msg__Twist*>(message));
+  }
+  static void onTeleop(const void* message) {
+    instance_->controller_.onTeleopCommand(*static_cast<const geometry_msgs__msg__Twist*>(message));
+  }
+  static void onMode(const void* message) {
+    instance_->controller_.setMode(static_cast<const std_msgs__msg__Bool*>(message)->data
+                                      ? RobotMode::kAutonomous : RobotMode::kTeleop);
+  }
+  static void onNeck(const void* message) {
+    instance_->controller_.onNeckCommand(static_cast<const std_msgs__msg__Int32*>(message)->data);
+  }
+};
+
+RobotController robot;
+MicroRosBridge ros(robot);
+
+}  // namespace
 
 void setup() {
-  Serial2.begin(115200); // debug only; errorLoop() reports here if wired to a debug adapter
-
-  pinMode(AIN1, OUTPUT);
-  pinMode(AIN2, OUTPUT);
-  pinMode(BIN1, OUTPUT);
-  pinMode(BIN2, OUTPUT);
-
-  ledcSetup(PWM_CH_A, PWM_FREQ, PWM_RES);
-  ledcAttachPin(PWMA, PWM_CH_A);
-  ledcSetup(PWM_CH_B, PWM_FREQ, PWM_RES);
-  ledcAttachPin(PWMB, PWM_CH_B);
-
-  ledcSetup(PWM_CH_SERVO, SERVO_FREQ, SERVO_RES);
-  ledcAttachPin(SERVO_PIN, PWM_CH_SERVO);
-  setServoAngle(90); // safe initial neck position; teleop/neck_angle controls it
-
-  stopMotors();
-
-  setupMicroRos(); // takes over Serial (USB) for the Pi link; no more Serial.print after this
-
-  lastCmdVelMs = millis();
-  lastTeleopCmdVelMs = lastCmdVelMs;
+  robot.begin();
+  ros.begin();
 }
 
 void loop() {
-  // Not RCCHECK'd: spin_some legitimately returns non-OK (e.g. timeout) when
-  // there's simply nothing to process, which isn't a fatal condition.
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2));
-
-  // Dead-man switch: either active command source timing out stops the base.
-  unsigned long lastActiveCmdMs = mode == MODE_AUTONOMOUS ? lastCmdVelMs : lastTeleopCmdVelMs;
-  if (millis() - lastActiveCmdMs > CMDVEL_TIMEOUT_MS) {
-    stopMotors();
-  }
+  ros.spin();
+  robot.update();
+  robot.enforceTimeout();
 }
