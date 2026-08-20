@@ -47,9 +47,8 @@ ros2 topic echo /joy
 
 The current source uses defaults based on Xbox receiver conventions; only L1,
 the left-stick axes, and the base teleop mapping have been confirmed. R1, A,
-B, right-stick, D-pad, and trigger mappings remain assumptions.  See
-[`docs/gamepad-control-map.md`](../../../docs/gamepad-control-map.md) for the complete intended operator map and
-verification procedure.
+B, right-stick, D-pad, and trigger mappings remain assumptions. See the
+repository root `README.md` for runtime checks and power-safety requirements.
 
 After mapping confirmation, copy this repository to `~/mobile-robot` on the
 Pi, install `systemd/robot-teleop.service` in `~/.config/systemd/user/`, and run:
@@ -59,7 +58,7 @@ systemctl --user daemon-reload
 systemctl --user enable --now robot-teleop.service
 ```
 
-The ESP32 must first run the firmware in `firmware/esp32`, which explicitly
+The ESP32 must first run the firmware in `src/main.cpp`, which explicitly
 subscribes to `/teleop/cmd_vel`. The test suite runs without ROS:
 
 ```bash
