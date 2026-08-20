@@ -3,6 +3,14 @@
 This repository contains the ESP32 micro-ROS firmware and the Raspberry Pi
 teleoperation coordinator.
 
+## Gamepad guide
+
+The complete operator control map, dead-man rules, ROS outputs, and pre-motion
+verification procedure are in [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md).
+Read that guide before enabling teleoperation. In short: **A** selects Teleop,
+**B** selects Autonomous/Stopped, hold **L1** for base drive, and hold **R1**
+for arm and neck controls.
+
 ## Runtime graph
 
 The Pi starts these user services automatically (user lingering is required):
