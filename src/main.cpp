@@ -181,7 +181,7 @@ class NeckServo {
   }
 
   void update() {
-    if (millis() - last_step_ms_ < kStepIntervalMs || current_angle_ == target_angle_) return;
+    if (!initialized_ || millis() - last_step_ms_ < kStepIntervalMs || current_angle_ == target_angle_) return;
     last_step_ms_ = millis();
     current_angle_ += current_angle_ < target_angle_ ? 1 : -1;
     writeAngle(current_angle_);
@@ -206,7 +206,8 @@ class NeckServo {
   static constexpr int kMaximumAngle = 150;
   static constexpr int kSafeCenterAngle = 120;
   static constexpr uint32_t kStepIntervalMs = 50;
-  int current_angle_ = kSafeCenterAngle;
+  bool initialized_ = false;
+  int current_angle_ = 90;
   int target_angle_ = kSafeCenterAngle;
   uint32_t last_step_ms_ = 0;
 };
@@ -219,10 +220,13 @@ class RobotController {
     encoders_.begin();
     odometry_.begin(encoders_);
     drive_.begin();
-    neck_.begin();
     last_autonomous_command_ms_ = millis();
     last_teleop_command_ms_ = last_autonomous_command_ms_;
   }
+
+  // Enable the servo only after micro-ROS has connected. Its startup current
+  // surge must not brownout-reset the ESP32 before the Pi discovers the node.
+  void enableNeck() { neck_.begin(); }
 
   void setMode(RobotMode mode) {
     mode_ = mode;
@@ -352,6 +356,7 @@ MicroRosBridge ros(robot);
 void setup() {
   robot.begin();
   ros.begin();
+  robot.enableNeck();
 }
 
 void loop() {
