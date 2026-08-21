@@ -30,6 +30,16 @@ For the low-resource top-down view (robot path and simulated LiDAR points):
 python3 simulation/pybullet_sim.py --2d --seconds 60
 ```
 
+For a realtime view directly in the PyBullet window, with the actual robot
+geometry shown from above:
+
+```bash
+python3 simulation/pybullet_sim.py --2d-gui --seconds 60
+```
+
+The orange lines are the live simulated LiDAR rays, blue is the path, and
+green is the robot heading. This mode does not require Matplotlib.
+
 This requires Matplotlib in addition to PyBullet:
 
 ```bash

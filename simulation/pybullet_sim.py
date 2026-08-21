@@ -96,6 +96,48 @@ def update_2d_view(view, pose, ranges) -> None:
     figure.canvas.flush_events()
 
 
+def make_pybullet_2d_view() -> dict:
+    """Configure the PyBullet window as a live top-down 2D-like view."""
+    pb.resetDebugVisualizerCamera(
+        cameraDistance=7.2,
+        cameraYaw=0.0,
+        cameraPitch=-89.9,
+        cameraTargetPosition=(0.0, 0.0, 0.0),
+    )
+    return {"scan_lines": [], "path_lines": [], "last_pose": None}
+
+
+def update_pybullet_2d_view(view: dict, pose, ranges) -> None:
+    """Draw a sparse live scan and path in the PyBullet top-down window."""
+    x, y, theta = pose
+    for line_id in view["scan_lines"] + view["path_lines"]:
+        pb.removeUserDebugItem(line_id)
+    view["scan_lines"] = []
+    view["path_lines"] = []
+
+    origin = (x, y, 0.05)
+    # 90 lines are enough for a responsive low-resource display.
+    for i in range(0, LIDAR_RAYS, 4):
+        angle = theta + 2.0 * math.pi * i / LIDAR_RAYS
+        distance = ranges[i]
+        end = (x + distance * math.cos(angle), y + distance * math.sin(angle), 0.05)
+        view["scan_lines"].append(
+            pb.addUserDebugLine(origin, end, lineColorRGB=[1, 0.35, 0], lineWidth=1.0)
+        )
+    previous = view["last_pose"]
+    if previous is not None:
+        view["path_lines"].append(
+            pb.addUserDebugLine((previous[0], previous[1], 0.06), origin,
+                                lineColorRGB=[0, 0.4, 1], lineWidth=2.0)
+        )
+    view["last_pose"] = pose
+    pb.addUserDebugLine(
+        origin,
+        (x + 0.2 * math.cos(theta), y + 0.2 * math.sin(theta), 0.05),
+        lineColorRGB=[0, 1, 0], lineWidth=3.0, lifeTime=0.2,
+    )
+
+
 def find_link(robot: int, name: str) -> int:
     for index in range(pb.getNumJoints(robot)):
         joint = pb.getJointInfo(robot, index)
@@ -132,6 +174,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--urdf", type=Path, default=Path(os.environ.get("ROBOT_URDF", DEFAULT_URDF)))
     parser.add_argument("--gui", action="store_true", help="Open the PyBullet window")
+    parser.add_argument("--2d-gui", dest="view_2d_gui", action="store_true",
+                        help="Open a realtime PyBullet top-down 2D-like view")
     parser.add_argument("--2d", dest="view_2d", action="store_true",
                         help="Open a lightweight top-down scan view")
     parser.add_argument("--seconds", type=float, default=20.0)
@@ -142,7 +186,8 @@ def main() -> None:
         raise SystemExit(f"URDF not found: {args.urdf}")
 
     view = make_2d_view() if args.view_2d else None
-    client = pb.connect(pb.GUI if args.gui else pb.DIRECT)
+    use_2d_gui = args.view_2d_gui
+    client = pb.connect(pb.GUI if args.gui or use_2d_gui else pb.DIRECT)
     try:
         pb.setAdditionalSearchPath(pybullet_data.getDataPath())
         pb.setGravity(0, 0, -9.81)
@@ -150,6 +195,7 @@ def main() -> None:
         make_test_world()
         robot = pb.loadURDF(str(args.urdf), basePosition=(0, 0, 0.02), useFixedBase=False,
                             flags=pb.URDF_USE_INERTIA_FROM_FILE)
+        pybullet_2d_view = make_pybullet_2d_view() if use_2d_gui else None
         lidar_link = find_link(robot, "rplidar_a1")
 
         x, y, theta = 0.0, 0.0, 0.0
@@ -167,6 +213,8 @@ def main() -> None:
             theta += angular * dt
             pb.resetBasePositionAndOrientation(robot, (x, y, 0.02), pb.getQuaternionFromEuler((0, 0, theta)))
             ranges = scan(robot, lidar_link, (x, y, theta))
+            if pybullet_2d_view:
+                update_pybullet_2d_view(pybullet_2d_view, (x, y, theta), ranges)
             if view and sample % 3 == 0:
                 update_2d_view(view, (x, y, theta), ranges)
             if sample % 20 == 0:
