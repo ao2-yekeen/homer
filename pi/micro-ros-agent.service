@@ -4,7 +4,8 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600'
+ExecStartPre=/usr/bin/esptool --chip esp32 --port /dev/robot-esp32 --baud 115200 --no-stub --after hard_reset chip_id
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/robot-esp32 -b 921600'
 Restart=on-failure
 RestartSec=2
 
