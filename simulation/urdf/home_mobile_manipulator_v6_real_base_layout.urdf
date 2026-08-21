@@ -1,0 +1,515 @@
+<?xml version="1.0"?>
+<robot name="home_mobile_manipulator_v6_real_base_layout">
+
+  <!-- ============================================================
+       FULL FIRST-PASS MODEL
+       Supplied dimensions:
+         mast height                         = 0.500 m
+         arm mount                           = 0.100 m below mast top
+                                              -> shoulder level = 0.400 m above mast base
+         drive wheel diameter                = 0.065 m
+         wood motor mounting layer           = 0.006 m
+         wheel-to-waffle vertical gap        = 0.005 m
+         upper plate spacing                 = 0.0155 m
+       Approximate dimensions are marked in comments.
+       ============================================================ -->
+
+  <link name="base_footprint"/>
+
+  <!-- ================= LOWER WAFFLE PLATE ================= -->
+  <link name="lower_waffle_plate">
+    <visual>
+      <origin xyz="0 0 0.0715"/>
+      <geometry><box size="0.300 0.285 0.003"/></geometry>
+      <material name="black"><color rgba="0.06 0.06 0.06 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0715"/>
+      <geometry><box size="0.300 0.285 0.003"/></geometry>
+    </collision>
+  </link>
+
+  <joint name="base_to_lower_plate" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="lower_waffle_plate"/>
+    <origin xyz="0 0 0"/>
+  </joint>
+
+  <!-- ================= WOODEN MOTOR MOUNTS ================= -->
+  <!-- Two separate 6 mm wooden rails. They support the drive motors only.
+       The front/rear ball casters mount directly to the waffle plate. -->
+
+  <link name="left_wood_motor_mount">
+    <visual>
+      <origin xyz="0 0 0.067"/>
+      <geometry><box size="0.160 0.045 0.006"/></geometry>
+      <material name="wood"><color rgba="0.52 0.30 0.14 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.067"/>
+      <geometry><box size="0.160 0.045 0.006"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_wood_mount_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="left_wood_motor_mount"/>
+    <origin xyz="0 0.118 0"/>
+  </joint>
+
+  <link name="right_wood_motor_mount">
+    <visual>
+      <origin xyz="0 0 0.067"/>
+      <geometry><box size="0.160 0.045 0.006"/></geometry>
+      <material name="wood"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.067"/>
+      <geometry><box size="0.160 0.045 0.006"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_wood_mount_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="right_wood_motor_mount"/>
+    <origin xyz="0 -0.118 0"/>
+  </joint>
+
+  <!-- ================= DRIVE MOTORS ================= -->
+  <link name="left_motor">
+    <visual>
+      <geometry><box size="0.070 0.035 0.035"/></geometry>
+      <material name="motor_metal"><color rgba="0.60 0.60 0.60 1"/></material>
+    </visual>
+  </link>
+  <joint name="left_motor_joint" type="fixed">
+    <parent link="left_wood_motor_mount"/>
+    <child link="left_motor"/>
+    <origin xyz="0 0.012 0.048"/>
+  </joint>
+
+  <link name="right_motor">
+    <visual>
+      <geometry><box size="0.070 0.035 0.035"/></geometry>
+      <material name="motor_metal"/>
+    </visual>
+  </link>
+  <joint name="right_motor_joint" type="fixed">
+    <parent link="right_wood_motor_mount"/>
+    <child link="right_motor"/>
+    <origin xyz="0 -0.012 0.048"/>
+  </joint>
+
+  <!-- ================= WHEELS ================= -->
+  <link name="left_wheel_link">
+    <visual>
+      <origin rpy="1.57079632679 0 0"/>
+      <geometry><cylinder radius="0.0325" length="0.030"/></geometry>
+      <material name="wheel"><color rgba="0.02 0.02 0.02 1"/></material>
+    </visual>
+    <collision>
+      <origin rpy="1.57079632679 0 0"/>
+      <geometry><cylinder radius="0.0325" length="0.030"/></geometry>
+    </collision>
+  </link>
+  <joint name="left_wheel_joint" type="continuous">
+    <parent link="lower_waffle_plate"/>
+    <child link="left_wheel_link"/>
+    <origin xyz="0 0.160 0.0325"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <link name="right_wheel_link">
+    <visual>
+      <origin rpy="1.57079632679 0 0"/>
+      <geometry><cylinder radius="0.0325" length="0.030"/></geometry>
+      <material name="wheel"/>
+    </visual>
+    <collision>
+      <origin rpy="1.57079632679 0 0"/>
+      <geometry><cylinder radius="0.0325" length="0.030"/></geometry>
+    </collision>
+  </link>
+  <joint name="right_wheel_joint" type="continuous">
+    <parent link="lower_waffle_plate"/>
+    <child link="right_wheel_link"/>
+    <origin xyz="0 -0.160 0.0325"/>
+    <axis xyz="0 1 0"/>
+  </joint>
+
+  <!-- ================= FRONT / REAR BALL CASTERS ================= -->
+  <!-- Casters are centered across the waffle plate (y=0), one at the front
+       and one at the rear. They are mounted directly to the lower waffle
+       plate, not to the wooden motor mounts. -->
+
+  <link name="front_caster_support">
+    <visual>
+      <origin xyz="0 0 -0.016"/>
+      <geometry><cylinder radius="0.006" length="0.032"/></geometry>
+      <material name="caster_support"><color rgba="0.25 0.25 0.25 1"/></material>
+    </visual>
+  </link>
+  <joint name="front_caster_support_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="front_caster_support"/>
+    <origin xyz="0.145 0 0.070"/>
+  </joint>
+
+  <link name="front_caster_housing">
+    <visual>
+      <geometry><cylinder radius="0.018" length="0.010"/></geometry>
+      <material name="caster_housing"><color rgba="0.42 0.42 0.42 1"/></material>
+    </visual>
+  </link>
+  <joint name="front_caster_housing_joint" type="fixed">
+    <parent link="front_caster_support"/>
+    <child link="front_caster_housing"/>
+    <origin xyz="0 0 -0.036"/>
+  </joint>
+
+  <link name="front_caster_ball">
+    <visual>
+      <geometry><sphere radius="0.014"/></geometry>
+      <material name="caster_ball"><color rgba="0.60 0.60 0.60 1"/></material>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.014"/></geometry>
+    </collision>
+  </link>
+  <joint name="front_caster_ball_joint" type="fixed">
+    <parent link="front_caster_housing"/>
+    <child link="front_caster_ball"/>
+    <origin xyz="0 0 -0.020"/>
+  </joint>
+
+  <link name="rear_caster_support">
+    <visual>
+      <origin xyz="0 0 -0.016"/>
+      <geometry><cylinder radius="0.006" length="0.032"/></geometry>
+      <material name="caster_support"/>
+    </visual>
+  </link>
+  <joint name="rear_caster_support_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="rear_caster_support"/>
+    <origin xyz="-0.145 0 0.070"/>
+  </joint>
+
+  <link name="rear_caster_housing">
+    <visual>
+      <geometry><cylinder radius="0.018" length="0.010"/></geometry>
+      <material name="caster_housing"/>
+    </visual>
+  </link>
+  <joint name="rear_caster_housing_joint" type="fixed">
+    <parent link="rear_caster_support"/>
+    <child link="rear_caster_housing"/>
+    <origin xyz="0 0 -0.036"/>
+  </joint>
+
+  <link name="rear_caster_ball">
+    <visual>
+      <geometry><sphere radius="0.014"/></geometry>
+      <material name="caster_ball"/>
+    </visual>
+    <collision>
+      <geometry><sphere radius="0.014"/></geometry>
+    </collision>
+  </link>
+  <joint name="rear_caster_ball_joint" type="fixed">
+    <parent link="rear_caster_housing"/>
+    <child link="rear_caster_ball"/>
+    <origin xyz="0 0 -0.020"/>
+  </joint>
+
+  <!-- ================= STANDOFFS / UPPER WAFFLE PLATE ================= -->
+  <!-- upper plate bottom = lower plate top + 15.5 mm -->
+  <link name="upper_waffle_plate">
+    <visual>
+      <origin xyz="0 0 0.003"/>
+      <geometry><box size="0.300 0.285 0.003"/></geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.003"/>
+      <geometry><box size="0.300 0.285 0.003"/></geometry>
+    </collision>
+  </link>
+  <joint name="upper_plate_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="upper_waffle_plate"/>
+    <origin xyz="0 0 0.0885"/>
+  </joint>
+
+  <!-- four standoff approximations -->
+  <link name="standoffs">
+    <visual>
+      <origin xyz="0.115 0.105 0.081"/>
+      <geometry><cylinder radius="0.004" length="0.0155"/></geometry>
+      <material name="standoff"><color rgba="0.65 0.65 0.65 1"/></material>
+    </visual>
+    <visual>
+      <origin xyz="0.115 -0.105 0.081"/>
+      <geometry><cylinder radius="0.004" length="0.0155"/></geometry>
+      <material name="standoff"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.115 0.105 0.081"/>
+      <geometry><cylinder radius="0.004" length="0.0155"/></geometry>
+      <material name="standoff"/>
+    </visual>
+    <visual>
+      <origin xyz="-0.115 -0.105 0.081"/>
+      <geometry><cylinder radius="0.004" length="0.0155"/></geometry>
+      <material name="standoff"/>
+    </visual>
+  </link>
+  <joint name="standoffs_joint" type="fixed">
+    <parent link="lower_waffle_plate"/>
+    <child link="standoffs"/>
+    <origin xyz="0 0 0"/>
+  </joint>
+
+  <!-- ================= ELECTRONICS ON BASE ================= -->
+  <!-- approximate visual placeholders based on photo -->
+  <link name="raspberry_pi">
+    <visual>
+      <geometry><box size="0.085 0.056 0.018"/></geometry>
+      <material name="pi"><color rgba="0.10 0.45 0.18 1"/></material>
+    </visual>
+  </link>
+  <joint name="raspberry_pi_joint" type="fixed">
+    <parent link="upper_waffle_plate"/>
+    <child link="raspberry_pi"/>
+    <origin xyz="-0.060 -0.065 0.020"/>
+  </joint>
+
+  <link name="motor_driver_box">
+    <visual>
+      <geometry><box size="0.060 0.045 0.018"/></geometry>
+      <material name="electronics"><color rgba="0.15 0.20 0.55 1"/></material>
+    </visual>
+  </link>
+  <joint name="motor_driver_box_joint" type="fixed">
+    <parent link="upper_waffle_plate"/>
+    <child link="motor_driver_box"/>
+    <origin xyz="0.045 -0.065 0.020"/>
+  </joint>
+
+  <link name="battery_box">
+    <visual>
+      <geometry><box size="0.100 0.045 0.030"/></geometry>
+      <material name="battery"><color rgba="0.18 0.18 0.18 1"/></material>
+    </visual>
+  </link>
+  <joint name="battery_box_joint" type="fixed">
+    <parent link="upper_waffle_plate"/>
+    <child link="battery_box"/>
+    <origin xyz="-0.055 0.075 0.025"/>
+  </joint>
+
+  <!-- ================= RPLIDAR A1 ================= -->
+  <link name="rplidar_a1">
+    <visual>
+      <origin xyz="0 0 0.0275"/>
+      <geometry><box size="0.097 0.070 0.055"/></geometry>
+      <material name="lidar_black"><color rgba="0.04 0.04 0.04 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.0275"/>
+      <geometry><box size="0.097 0.070 0.055"/></geometry>
+    </collision>
+  </link>
+  <joint name="rplidar_joint" type="fixed">
+    <parent link="upper_waffle_plate"/>
+    <child link="rplidar_a1"/>
+    <origin xyz="0.090 0.075 0.0045"/>
+  </joint>
+
+  <!-- ================= 500 mm ALUMINIUM MAST ================= -->
+  <link name="mast_link">
+    <visual>
+      <origin xyz="0 0 0.250"/>
+      <geometry><box size="0.040 0.040 0.500"/></geometry>
+      <material name="aluminium"><color rgba="0.72 0.72 0.72 1"/></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0.250"/>
+      <geometry><box size="0.040 0.040 0.500"/></geometry>
+    </collision>
+  </link>
+  <joint name="mast_joint" type="fixed">
+    <parent link="upper_waffle_plate"/>
+    <child link="mast_link"/>
+    <origin xyz="-0.045 0 0.006"/>
+  </joint>
+
+  <!-- ================= SO-ARM MOUNT ================= -->
+  <!-- 100 mm below mast top: 500 - 100 = 400 mm above mast base -->
+  <link name="arm_base_mount">
+    <visual>
+      <geometry><box size="0.060 0.080 0.080"/></geometry>
+      <material name="arm_red"><color rgba="0.78 0.05 0.04 1"/></material>
+    </visual>
+  </link>
+  <joint name="arm_base_mount_joint" type="fixed">
+    <parent link="mast_link"/>
+    <child link="arm_base_mount"/>
+    <origin xyz="0.025 0 0.400"/>
+  </joint>
+
+  <!-- ================= APPROXIMATE SO-ARM LINKS ================= -->
+  <link name="shoulder_servo">
+    <visual>
+      <geometry><box size="0.050 0.050 0.050"/></geometry>
+      <material name="servo"><color rgba="0.10 0.10 0.10 1"/></material>
+    </visual>
+  </link>
+  <joint name="shoulder_yaw_joint" type="revolute">
+    <parent link="arm_base_mount"/>
+    <child link="shoulder_servo"/>
+    <origin xyz="0.035 0 0"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.14" upper="3.14" effort="8" velocity="2"/>
+  </joint>
+
+  <link name="upper_arm">
+    <visual>
+      <origin xyz="0.060 0 0"/>
+      <geometry><box size="0.120 0.045 0.045"/></geometry>
+      <material name="arm_black"><color rgba="0.10 0.10 0.10 1"/></material>
+    </visual>
+  </link>
+  <joint name="shoulder_pitch_joint" type="revolute">
+    <parent link="shoulder_servo"/>
+    <child link="upper_arm"/>
+    <origin xyz="0.030 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.6" upper="2.6" effort="8" velocity="2"/>
+  </joint>
+
+  <link name="elbow_servo">
+    <visual>
+      <geometry><box size="0.050 0.050 0.050"/></geometry>
+      <material name="servo"/>
+    </visual>
+  </link>
+  <joint name="elbow_joint" type="revolute">
+    <parent link="upper_arm"/>
+    <child link="elbow_servo"/>
+    <origin xyz="0.120 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.6" upper="2.6" effort="8" velocity="2"/>
+  </joint>
+
+  <link name="forearm">
+    <visual>
+      <origin xyz="0.055 0 0"/>
+      <geometry><box size="0.110 0.045 0.045"/></geometry>
+      <material name="arm_magenta"><color rgba="0.72 0.04 0.48 1"/></material>
+    </visual>
+  </link>
+  <joint name="forearm_joint" type="fixed">
+    <parent link="elbow_servo"/>
+    <child link="forearm"/>
+    <origin xyz="0.025 0 0"/>
+  </joint>
+
+  <link name="wrist_servo">
+    <visual>
+      <geometry><box size="0.048 0.048 0.048"/></geometry>
+      <material name="servo"/>
+    </visual>
+  </link>
+  <joint name="wrist_pitch_joint" type="revolute">
+    <parent link="forearm"/>
+    <child link="wrist_servo"/>
+    <origin xyz="0.110 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-2.6" upper="2.6" effort="5" velocity="2.5"/>
+  </joint>
+
+  <link name="wrist_roll_link">
+    <visual>
+      <origin xyz="0.040 0 0"/>
+      <geometry><box size="0.080 0.040 0.040"/></geometry>
+      <material name="arm_magenta"/>
+    </visual>
+  </link>
+  <joint name="wrist_roll_joint" type="revolute">
+    <parent link="wrist_servo"/>
+    <child link="wrist_roll_link"/>
+    <origin xyz="0.024 0 0"/>
+    <axis xyz="1 0 0"/>
+    <limit lower="-3.14" upper="3.14" effort="4" velocity="3"/>
+  </joint>
+
+  <link name="gripper">
+    <visual>
+      <origin xyz="0.050 0 0"/>
+      <geometry><box size="0.100 0.070 0.055"/></geometry>
+      <material name="gripper_orange"><color rgba="1.0 0.40 0.0 1"/></material>
+    </visual>
+  </link>
+  <joint name="gripper_joint" type="revolute">
+    <parent link="wrist_roll_link"/>
+    <child link="gripper"/>
+    <origin xyz="0.080 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.2" upper="1.2" effort="3" velocity="2"/>
+  </joint>
+
+  <!-- ================= MG996 NECK ================= -->
+  <link name="mg996_neck_servo">
+    <visual>
+      <geometry><box size="0.041 0.020 0.043"/></geometry>
+      <material name="servo"/>
+    </visual>
+  </link>
+  <joint name="neck_mount_joint" type="fixed">
+    <parent link="mast_link"/>
+    <child link="mg996_neck_servo"/>
+    <origin xyz="0 0 0.515"/>
+  </joint>
+
+  <link name="camera_bar">
+    <visual>
+      <origin xyz="0.050 0 0"/>
+      <geometry><box size="0.130 0.050 0.025"/></geometry>
+      <material name="camera_bar_mat"><color rgba="0.08 0.08 0.08 1"/></material>
+    </visual>
+  </link>
+  <joint name="neck_tilt_joint" type="revolute">
+    <parent link="mg996_neck_servo"/>
+    <child link="camera_bar"/>
+    <origin xyz="0 0 0.015"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.05" upper="1.05" effort="10" velocity="2"/>
+  </joint>
+
+  <!-- RGB camera -->
+  <link name="rgb_camera">
+    <visual>
+      <geometry><box size="0.050 0.032 0.030"/></geometry>
+      <material name="rgb_cam_mat"><color rgba="0.03 0.03 0.03 1"/></material>
+    </visual>
+  </link>
+  <joint name="rgb_camera_joint" type="fixed">
+    <parent link="camera_bar"/>
+    <child link="rgb_camera"/>
+    <origin xyz="0.070 0.020 0"/>
+  </joint>
+
+  <!-- ToF camera -->
+  <link name="tof_camera">
+    <visual>
+      <geometry><box size="0.038 0.032 0.030"/></geometry>
+      <material name="tof_cam_mat"><color rgba="0.85 0.85 0.85 1"/></material>
+    </visual>
+  </link>
+  <joint name="tof_camera_joint" type="fixed">
+    <parent link="camera_bar"/>
+    <child link="tof_camera"/>
+    <origin xyz="0.070 -0.020 0"/>
+  </joint>
+
+</robot>
+
