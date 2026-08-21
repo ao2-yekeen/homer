@@ -18,10 +18,22 @@ python3 -m pip install --user pybullet
 python3 simulation/pybullet_sim.py --seconds 20
 ```
 
-To inspect the model visually:
+To inspect the model in 3D:
 
 ```bash
 python3 simulation/pybullet_sim.py --gui --seconds 60
+```
+
+For the low-resource top-down view (robot path and simulated LiDAR points):
+
+```bash
+python3 simulation/pybullet_sim.py --2d --seconds 60
+```
+
+This requires Matplotlib in addition to PyBullet:
+
+```bash
+python3 -m pip install --user matplotlib
 ```
 
 The simulator currently drives the base kinematically and prints a simulated
@@ -35,4 +47,3 @@ Set `ROBOT_URDF` if the file is moved:
 ```bash
 ROBOT_URDF=/path/to/robot.urdf python3 simulation/pybullet_sim.py
 ```
-

@@ -26,6 +26,14 @@ WHEEL_RADIUS_M = 0.0325
 TRACK_WIDTH_M = 0.230
 LIDAR_RAYS = 360
 LIDAR_RANGE_M = 8.0
+WORLD_WALLS = [
+    ((2.5, 0.0), (0.10, 5.0)),
+    ((-2.5, 0.0), (0.10, 5.0)),
+    ((0.0, 2.5), (5.0, 0.10)),
+    ((0.0, -2.5), (5.0, 0.10)),
+    ((0.7, 0.7), (1.2, 0.12)),
+    ((-0.8, -0.7), (0.12, 1.4)),
+]
 
 
 def add_box(center: tuple[float, float, float], size: tuple[float, float, float]) -> int:
@@ -37,16 +45,55 @@ def add_box(center: tuple[float, float, float], size: tuple[float, float, float]
 def make_test_world() -> None:
     """Small maze-like world with only primitive collision objects."""
     wall_height = 0.35
-    walls = [
-        ((2.5, 0.0, wall_height / 2), (0.10, 5.0, wall_height)),
-        ((-2.5, 0.0, wall_height / 2), (0.10, 5.0, wall_height)),
-        ((0.0, 2.5, wall_height / 2), (5.0, 0.10, wall_height)),
-        ((0.0, -2.5, wall_height / 2), (5.0, 0.10, wall_height)),
-        ((0.7, 0.7, wall_height / 2), (1.2, 0.12, wall_height)),
-        ((-0.8, -0.7, wall_height / 2), (0.12, 1.4, wall_height)),
-    ]
-    for center, size in walls:
+    for (x, y), (width, length) in WORLD_WALLS:
+        center = (x, y, wall_height / 2)
+        size = (width, length, wall_height)
         add_box(center, size)
+
+
+def make_2d_view():
+    """Create an optional low-resource top-down view."""
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    figure, axis = plt.subplots(figsize=(7, 7))
+    axis.set_title("v6 robot — simulated RPLIDAR scan")
+    axis.set_xlabel("x (m)")
+    axis.set_ylabel("y (m)")
+    axis.set_aspect("equal")
+    axis.set_xlim(-3.0, 3.0)
+    axis.set_ylim(-3.0, 3.0)
+    for (x, y), (width, length) in WORLD_WALLS:
+        axis.add_patch(Rectangle((x - width / 2, y - length / 2), width, length,
+                                 facecolor="dimgray", edgecolor="black"))
+    path, = axis.plot([], [], color="tab:blue", linewidth=1, label="path")
+    points = axis.scatter([], [], s=3, color="tab:orange", label="lidar")
+    robot_marker, = axis.plot([], [], "o", color="tab:green", markersize=8, label="robot")
+    heading, = axis.plot([], [], color="tab:green", linewidth=2)
+    axis.legend(loc="upper right")
+    axis.grid(alpha=0.25)
+    figure.tight_layout()
+    plt.ion()
+    if "agg" not in str(plt.get_backend()).lower():
+        figure.show()
+    return figure, axis, path, points, robot_marker, heading
+
+
+def update_2d_view(view, pose, ranges) -> None:
+    figure, axis, path, points, robot_marker, heading = view
+    x, y, theta = pose
+    angles = [theta + 2.0 * math.pi * i / LIDAR_RAYS for i in range(LIDAR_RAYS)]
+    lidar_points = [(x + distance * math.cos(angle), y + distance * math.sin(angle))
+                    for angle, distance in zip(angles, ranges) if distance < LIDAR_RANGE_M]
+    if not hasattr(update_2d_view, "trail"):
+        update_2d_view.trail = []
+    update_2d_view.trail.append((x, y))
+    path.set_data(*zip(*update_2d_view.trail))
+    points.set_offsets(lidar_points or [[x, y]])
+    robot_marker.set_data([x], [y])
+    heading.set_data([x, x + 0.18 * math.cos(theta)], [y, y + 0.18 * math.sin(theta)])
+    figure.canvas.draw_idle()
+    figure.canvas.flush_events()
 
 
 def find_link(robot: int, name: str) -> int:
@@ -85,11 +132,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--urdf", type=Path, default=Path(os.environ.get("ROBOT_URDF", DEFAULT_URDF)))
     parser.add_argument("--gui", action="store_true", help="Open the PyBullet window")
+    parser.add_argument("--2d", dest="view_2d", action="store_true",
+                        help="Open a lightweight top-down scan view")
     parser.add_argument("--seconds", type=float, default=20.0)
+    parser.add_argument("--save-2d", type=Path, metavar="PNG",
+                        help="Save a final 2D view image (useful on headless systems)")
     args = parser.parse_args()
     if not args.urdf.exists():
         raise SystemExit(f"URDF not found: {args.urdf}")
 
+    view = make_2d_view() if args.view_2d else None
     client = pb.connect(pb.GUI if args.gui else pb.DIRECT)
     try:
         pb.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -115,6 +167,8 @@ def main() -> None:
             theta += angular * dt
             pb.resetBasePositionAndOrientation(robot, (x, y, 0.02), pb.getQuaternionFromEuler((0, 0, theta)))
             ranges = scan(robot, lidar_link, (x, y, theta))
+            if view and sample % 3 == 0:
+                update_2d_view(view, (x, y, theta), ranges)
             if sample % 20 == 0:
                 print(f"t={now-started:5.1f}s pose=({x:+.3f}, {y:+.3f}, {theta:+.3f}) "
                       f"scan_min={min(ranges):.3f}m")
@@ -122,10 +176,14 @@ def main() -> None:
             pb.stepSimulation()
             if args.gui:
                 time.sleep(1.0 / 60.0)
+            elif view:
+                time.sleep(1.0 / 30.0)
+        if view and args.save_2d:
+            view[0].savefig(args.save_2d, dpi=150)
+            print(f"saved 2D view to {args.save_2d}")
     finally:
         pb.disconnect(client)
 
 
 if __name__ == "__main__":
     main()
-
