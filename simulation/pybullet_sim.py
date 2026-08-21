@@ -138,6 +138,55 @@ def update_pybullet_2d_view(view: dict, pose, ranges) -> None:
     )
 
 
+def make_live_2d_view() -> dict:
+    """Create a real 2D window without rendering the PyBullet robot."""
+    import pygame
+
+    pygame.init()
+    screen = pygame.display.set_mode((720, 720))
+    pygame.display.set_caption("v6 robot - realtime 2D LiDAR")
+    return {"pygame": pygame, "screen": screen, "clock": pygame.time.Clock(), "trail": []}
+
+
+def update_live_2d_view(view: dict, pose, ranges) -> bool:
+    """Render walls, path, robot heading, and LiDAR points in flat 2D."""
+    pygame = view["pygame"]
+    screen = view["screen"]
+    scale, margin = 110.0, 30
+
+    def pixel(point):
+        return (int(margin + (point[0] + 3.0) * scale),
+                int(690 - (point[1] + 3.0) * scale))
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            return False
+    x, y, theta = pose
+    view["trail"].append((x, y))
+    screen.fill((248, 248, 248))
+    for (wall_x, wall_y), (width, length) in WORLD_WALLS:
+        left_top = pixel((wall_x - width / 2, wall_y + length / 2))
+        pygame.draw.rect(screen, (80, 80, 80),
+                         (left_top[0], left_top[1], int(width * scale), int(length * scale)))
+    if len(view["trail"]) > 1:
+        pygame.draw.lines(screen, (40, 110, 210), False,
+                          [pixel(point) for point in view["trail"]], 2)
+    for i in range(0, LIDAR_RAYS, 2):
+        angle = theta + 2.0 * math.pi * i / LIDAR_RAYS
+        distance = ranges[i]
+        if distance < LIDAR_RANGE_M:
+            pygame.draw.circle(screen, (255, 125, 20),
+                               pixel((x + distance * math.cos(angle),
+                                      y + distance * math.sin(angle))), 2)
+    center = pixel((x, y))
+    pygame.draw.circle(screen, (35, 165, 55), center, 9)
+    pygame.draw.line(screen, (20, 120, 40), center,
+                     pixel((x + 0.22 * math.cos(theta), y + 0.22 * math.sin(theta))), 3)
+    pygame.display.flip()
+    view["clock"].tick(30)
+    return True
+
+
 def find_link(robot: int, name: str) -> int:
     for index in range(pb.getNumJoints(robot)):
         joint = pb.getJointInfo(robot, index)
@@ -176,6 +225,8 @@ def main() -> None:
     parser.add_argument("--gui", action="store_true", help="Open the PyBullet window")
     parser.add_argument("--2d-gui", dest="view_2d_gui", action="store_true",
                         help="Open a realtime PyBullet top-down 2D-like view")
+    parser.add_argument("--2d-live", dest="view_2d_live", action="store_true",
+                        help="Open a genuine realtime flat 2D window")
     parser.add_argument("--2d", dest="view_2d", action="store_true",
                         help="Open a lightweight top-down scan view")
     parser.add_argument("--seconds", type=float, default=20.0)
@@ -187,6 +238,7 @@ def main() -> None:
 
     view = make_2d_view() if args.view_2d else None
     use_2d_gui = args.view_2d_gui
+    live_2d_view = make_live_2d_view() if args.view_2d_live else None
     client = pb.connect(pb.GUI if args.gui or use_2d_gui else pb.DIRECT)
     try:
         pb.setAdditionalSearchPath(pybullet_data.getDataPath())
@@ -213,6 +265,8 @@ def main() -> None:
             theta += angular * dt
             pb.resetBasePositionAndOrientation(robot, (x, y, 0.02), pb.getQuaternionFromEuler((0, 0, theta)))
             ranges = scan(robot, lidar_link, (x, y, theta))
+            if live_2d_view and not update_live_2d_view(live_2d_view, (x, y, theta), ranges):
+                break
             if pybullet_2d_view:
                 update_pybullet_2d_view(pybullet_2d_view, (x, y, theta), ranges)
             if view and sample % 3 == 0:
