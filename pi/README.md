@@ -28,3 +28,7 @@ Verify startup with:
 ros2 topic echo /odom --once
 systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
 ```
+
+The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
+stable `/dev/robot-lidar` device link and restarts automatically if the USB
+device or driver temporarily disappears.

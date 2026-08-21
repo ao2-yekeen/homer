@@ -1,0 +1,13 @@
+[Unit]
+Description=RPLIDAR A1 ROS 2 scan publisher
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/ros2_ws/install/setup.bash && exec ros2 launch rplidar_ros rplidar_a1_launch.py serial_port:=/dev/robot-lidar serial_baudrate:=115200 frame_id:=laser angle_compensate:=true'
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=default.target
