@@ -58,11 +58,24 @@ This requires Matplotlib in addition to PyBullet:
 python3 -m pip install --user matplotlib
 ```
 
-The simulator currently drives the base kinematically and prints a simulated
-360-ray LiDAR minimum range. This is intentional: it keeps the first SLAM
-test light and makes the sensor output independent of PyBullet motor tuning.
-The next layer will add noisy wheel odometry and an occupancy-grid SLAM
-consumer using the same scan data.
+The simulator drives the base kinematically, but separates ground truth from
+the sensor estimate. PyBullet ray casts use the true pose; the reported
+360-ray LiDAR ranges have Gaussian noise (default standard deviation 1 cm).
+Wheel odometry is reconstructed from noisy left/right wheel travel, with a
+small fixed scale error representing unequal wheel diameter or encoder
+calibration. The 2D views use this odometry pose, while the terminal prints
+the true pose and odometry error.
+
+The defaults are repeatable (`--seed 7`). Tune the errors for experiments:
+
+```bash
+python3 simulation/pybullet_sim.py --2d-live --seconds 60 \
+  --lidar-noise-std 0.02 --wheel-noise-fraction 0.04 \
+  --wheel-scale-error 0.02
+```
+
+This is the sensor layer needed before adding an occupancy-grid SLAM
+consumer; the simulator still does not perform SLAM itself.
 
 Set `ROBOT_URDF` if the file is moved:
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import math
 import os
+import random
 import time
 from pathlib import Path
 
@@ -26,6 +27,9 @@ WHEEL_RADIUS_M = 0.0325
 TRACK_WIDTH_M = 0.230
 LIDAR_RAYS = 360
 LIDAR_RANGE_M = 8.0
+LIDAR_NOISE_STD_M = 0.01
+WHEEL_NOISE_FRACTION = 0.02
+WHEEL_SCALE_ERROR = 0.01
 WORLD_WALLS = [
     ((2.5, 0.0), (0.10, 5.0)),
     ((-2.5, 0.0), (0.10, 5.0)),
@@ -219,6 +223,31 @@ def scan(robot: int, lidar_link: int, pose: tuple[float, float, float]) -> list[
     ]
 
 
+def add_lidar_noise(ranges: list[float], rng: random.Random, std_m: float) -> list[float]:
+    """Apply range noise while preserving the sensor's valid range."""
+    if std_m <= 0.0:
+        return ranges
+    return [max(0.0, min(LIDAR_RANGE_M, distance + rng.gauss(0.0, std_m)))
+            for distance in ranges]
+
+
+def integrate_wheel_odometry(
+    pose: tuple[float, float, float],
+    left_distance: float,
+    right_distance: float,
+) -> tuple[float, float, float]:
+    """Integrate measured differential-drive wheel travel into an odom pose."""
+    x, y, theta = pose
+    center_distance = (left_distance + right_distance) / 2.0
+    heading_change = (right_distance - left_distance) / TRACK_WIDTH_M
+    mid_heading = theta + heading_change / 2.0
+    return (
+        x + center_distance * math.cos(mid_heading),
+        y + center_distance * math.sin(mid_heading),
+        theta + heading_change,
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--urdf", type=Path, default=Path(os.environ.get("ROBOT_URDF", DEFAULT_URDF)))
@@ -230,6 +259,14 @@ def main() -> None:
     parser.add_argument("--2d", dest="view_2d", action="store_true",
                         help="Open a lightweight top-down scan view")
     parser.add_argument("--seconds", type=float, default=20.0)
+    parser.add_argument("--seed", type=int, default=7,
+                        help="Random seed for repeatable sensor errors")
+    parser.add_argument("--lidar-noise-std", type=float, default=LIDAR_NOISE_STD_M,
+                        help="LiDAR Gaussian range noise standard deviation in metres")
+    parser.add_argument("--wheel-noise-fraction", type=float, default=WHEEL_NOISE_FRACTION,
+                        help="Per-step wheel travel noise as a fraction of travel")
+    parser.add_argument("--wheel-scale-error", type=float, default=WHEEL_SCALE_ERROR,
+                        help="Fixed left/right wheel scale error fraction")
     parser.add_argument("--save-2d", type=Path, metavar="PNG",
                         help="Save a final 2D view image (useful on headless systems)")
     args = parser.parse_args()
@@ -237,6 +274,10 @@ def main() -> None:
         raise SystemExit(f"URDF not found: {args.urdf}")
 
     view = make_2d_view() if args.view_2d else None
+    rng = random.Random(args.seed)
+    # Fixed calibration errors model unequal wheel diameter/encoder scale.
+    left_scale = 1.0 + rng.uniform(-args.wheel_scale_error, args.wheel_scale_error)
+    right_scale = 1.0 + rng.uniform(-args.wheel_scale_error, args.wheel_scale_error)
     use_2d_gui = args.view_2d_gui
     live_2d_view = make_live_2d_view() if args.view_2d_live else None
     client = pb.connect(pb.GUI if args.gui or use_2d_gui else pb.DIRECT)
@@ -250,7 +291,8 @@ def main() -> None:
         pybullet_2d_view = make_pybullet_2d_view() if use_2d_gui else None
         lidar_link = find_link(robot, "rplidar_a1")
 
-        x, y, theta = 0.0, 0.0, 0.0
+        x, y, theta = 0.0, 0.0, 0.0       # ground truth pose
+        odom_pose = (0.0, 0.0, 0.0)       # pose reconstructed from wheel readings
         started = time.monotonic()
         last = started
         sample = 0
@@ -260,20 +302,32 @@ def main() -> None:
             last = now
             phase = (now - started) % 16.0
             linear, angular = (0.10, 0.0) if phase < 8.0 else (0.0, math.pi / 8.0)
+            left_velocity = linear - angular * TRACK_WIDTH_M / 2.0
+            right_velocity = linear + angular * TRACK_WIDTH_M / 2.0
+            left_distance = left_velocity * dt
+            right_distance = right_velocity * dt
             x += linear * math.cos(theta) * dt
             y += linear * math.sin(theta) * dt
             theta += angular * dt
+            left_measured = left_distance * left_scale
+            right_measured = right_distance * right_scale
+            left_measured += rng.gauss(0.0, abs(left_distance) * args.wheel_noise_fraction)
+            right_measured += rng.gauss(0.0, abs(right_distance) * args.wheel_noise_fraction)
+            odom_pose = integrate_wheel_odometry(odom_pose, left_measured, right_measured)
             pb.resetBasePositionAndOrientation(robot, (x, y, 0.02), pb.getQuaternionFromEuler((0, 0, theta)))
-            ranges = scan(robot, lidar_link, (x, y, theta))
-            if live_2d_view and not update_live_2d_view(live_2d_view, (x, y, theta), ranges):
+            ranges = add_lidar_noise(scan(robot, lidar_link, (x, y, theta)), rng,
+                                     args.lidar_noise_std)
+            if live_2d_view and not update_live_2d_view(live_2d_view, odom_pose, ranges):
                 break
             if pybullet_2d_view:
-                update_pybullet_2d_view(pybullet_2d_view, (x, y, theta), ranges)
+                update_pybullet_2d_view(pybullet_2d_view, odom_pose, ranges)
             if view and sample % 3 == 0:
-                update_2d_view(view, (x, y, theta), ranges)
+                update_2d_view(view, odom_pose, ranges)
             if sample % 20 == 0:
-                print(f"t={now-started:5.1f}s pose=({x:+.3f}, {y:+.3f}, {theta:+.3f}) "
-                      f"scan_min={min(ranges):.3f}m")
+                position_error = math.hypot(odom_pose[0] - x, odom_pose[1] - y)
+                print(f"t={now-started:5.1f}s true=({x:+.3f}, {y:+.3f}, {theta:+.3f}) "
+                      f"odom=({odom_pose[0]:+.3f}, {odom_pose[1]:+.3f}, {odom_pose[2]:+.3f}) "
+                      f"odom_xy_error={position_error:.3f}m scan_min={min(ranges):.3f}m")
             sample += 1
             pb.stepSimulation()
             if args.gui:
