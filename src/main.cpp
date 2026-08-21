@@ -128,7 +128,11 @@ class DifferentialDrive {
   }
 
   void command(float linear, float angular) {
-    const int left = static_cast<int>(linear * kLinearScale - angular * kAngularScale);
+    // The robot consistently drifts left under equal commands. Apply a small
+    // open-loop correction to the left motor until the wheels are physically
+    // realigned. This is a drive trim, not an odometry calibration.
+    const int left = static_cast<int>(
+        (linear * kLinearScale - angular * kAngularScale) * kLeftDriveTrim);
     const int right = static_cast<int>(linear * kLinearScale + angular * kAngularScale);
     setWheelDuty(left, right);
   }
@@ -150,6 +154,9 @@ class DifferentialDrive {
   // Conservative initial scale; tune only after a lifted-wheel test.
   static constexpr float kLinearScale = 120.0f;
   static constexpr float kAngularScale = 60.0f;
+  // Start at +5% because the robot veers left. Increase/decrease in 0.02
+  // steps after a short straight-line floor test.
+  static constexpr float kLeftDriveTrim = 1.05f;
 
   void setWheelDuty(int left, int right) {
     left = constrain(left, -kMaxDuty, kMaxDuty);
