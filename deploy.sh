@@ -10,9 +10,9 @@ BUILD_DIR="$PROJECT_DIR/.pio/build/$ENVIRONMENT"
 BOOT_APP0="/home/ao2-yekeen/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
 REMOTE_DIR="~/esp32_fw"
 REMOTE_PORT="/dev/ttyUSB0"
-# The CP2102 bridge on the Pi is reliable at this speed.  Higher-rate,
-# compressed writes have caused USB serial disconnects during full images.
-FLASH_BAUD="${ESP32_FLASH_BAUD:-57600}"
+# This conservative default is fast while leaving margin for the Pi's CP2102
+# bridge.  The value can be overridden for diagnostics with ESP32_FLASH_BAUD.
+FLASH_BAUD="${ESP32_FLASH_BAUD:-115200}"
 
 echo "==> Building $ENVIRONMENT firmware locally"
 cd "$PROJECT_DIR"
