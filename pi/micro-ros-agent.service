@@ -4,8 +4,10 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStartPre=/usr/bin/esptool --chip esp32 --port /dev/robot-esp32 --baud 115200 --no-stub --after hard_reset chip_id
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/robot-esp32 -b 921600'
+# The verified ESP32 CP2102 bridge is attached as /dev/ttyUSB0.  Keep this in
+# sync with deploy.sh until a persistent udev /dev/robot-esp32 link is added.
+ExecStartPre=/usr/bin/esptool --chip esp32 --port /dev/ttyUSB0 --baud 115200 --no-stub --after hard_reset chip_id
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/microros_ws/install/local_setup.bash && exec %h/microros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent serial --dev /dev/ttyUSB0 -b 921600'
 Restart=on-failure
 RestartSec=2
 
