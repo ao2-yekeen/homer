@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "robot_config.h"
+#include "../config/robot_config.h"
 
 namespace homer {
 

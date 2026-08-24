@@ -3,7 +3,7 @@
 #include <math.h>
 #include <micro_ros_platformio.h>
 
-#include "robot_config.h"
+#include "../config/robot_config.h"
 
 namespace homer {
 

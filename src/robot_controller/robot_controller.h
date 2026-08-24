@@ -2,10 +2,10 @@
 
 #include <Arduino.h>
 
-#include "differential_drive.h"
-#include "neck_servo.h"
-#include "odometry.h"
-#include "wheel_encoders.h"
+#include "../differential_drive/differential_drive.h"
+#include "../neck_servo/neck_servo.h"
+#include "../odometry/odometry.h"
+#include "../wheel_encoders/wheel_encoders.h"
 
 namespace homer {
 

@@ -1,6 +1,6 @@
 #include "neck_servo.h"
 
-#include "robot_config.h"
+#include "../config/robot_config.h"
 
 namespace homer {
 

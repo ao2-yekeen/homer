@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-#include "wheel_encoders.h"
+#include "../wheel_encoders/wheel_encoders.h"
 
 namespace homer {
 

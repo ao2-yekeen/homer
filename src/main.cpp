@@ -1,7 +1,7 @@
 #include <Arduino.h>
 
-#include "micro_ros_node.h"
-#include "robot_controller.h"
+#include "micro_ros_node/micro_ros_node.h"
+#include "robot_controller/robot_controller.h"
 
 namespace {
 

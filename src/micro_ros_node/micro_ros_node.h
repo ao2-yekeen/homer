@@ -10,7 +10,7 @@
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/int32.h>
 
-#include "robot_controller.h"
+#include "../robot_controller/robot_controller.h"
 
 namespace homer {
 
