@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build locally, then push the built binaries to the Pi and flash the ESP32
 # attached to it (over /dev/ttyUSB0) via the Pi's lightweight `esptool`.
-# Usage: ./deploy.sh [esp32dev|servo_sweep]
+# Usage: ./deploy.sh [esp32dev|servo_sweep|servo_idle|motor_diagnostic]
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
