@@ -1,0 +1,15 @@
+[Unit]
+Description=RPLIDAR A1 ROS 2 scan publisher
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sh -c 'until [ -e /dev/robot-lidar ]; do sleep 1; done'
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/ros2_ws/install/setup.bash && exec %h/ros2_ws/install/rplidar_ros/lib/rplidar_ros/rplidar_node --ros-args -p channel_type:=serial -p serial_port:=/dev/robot-lidar -p serial_baudrate:=115200 -p frame_id:=laser -p inverted:=false -p angle_compensate:=true -p scan_mode:=Standard'
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+
+[Install]
+WantedBy=default.target
