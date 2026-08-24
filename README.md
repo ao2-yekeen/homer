@@ -26,6 +26,14 @@ The ESP32 node is `/mobile_robot`. It subscribes to `/cmd_vel`,
 encoder-based `nav_msgs/msg/Odometry` on `/odom` with frames `odom` and
 `base_link`.
 
+## Firmware layout
+
+The firmware is split by responsibility: hardware drivers are in
+`wheel_encoders.*`, `differential_drive.*`, and `neck_servo.*`; motion
+estimation is in `odometry.*`; robot modes and command timeout safety are in
+`robot_controller.*`; and ROS topics are isolated in `micro_ros_node.*`.
+Physical pins and calibration values are collected in `robot_config.h`.
+
 ## Safety
 
 Test with the wheels lifted, the arm supported, and an emergency power
