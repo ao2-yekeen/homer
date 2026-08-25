@@ -1,60 +1,104 @@
-# ESP32 mobile robot
+# Homer mobile manipulator
 
-This repository contains the ESP32 micro-ROS firmware and the Raspberry Pi
-teleoperation coordinator.
+Homer is an experimental mobile manipulator built around an ESP32, a Raspberry
+Pi, ROS 2 Jazzy, differential drive, an SO-ARM 101, and an RPLIDAR A1. This
+repository contains the firmware, Pi-side ROS integration, operator controls,
+and a lightweight simulation in one place.
 
-## Gamepad guide
+> **Hardware safety:** do not enable motion from a fresh checkout. Test with
+> the drive wheels lifted, the arm supported, and an accessible emergency power
+> disconnect. Confirm controller mappings, USB device identities, motor wiring,
+> and power capacity on the specific robot first.
 
-The complete operator control map, dead-man rules, ROS outputs, and pre-motion
-verification procedure are in [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md).
-Read that guide before enabling teleoperation. In short: **A** selects Teleop,
-**B** selects Autonomous/Stopped, hold **L1** for base drive, and hold **R1**
-for arm and neck controls.
+## What lives here
 
-## Runtime graph
+| Area | Purpose | Starting point |
+| --- | --- | --- |
+| ESP32 firmware | micro-ROS node, drive control, encoders, odometry, neck servo | [`src/`](src/) |
+| Raspberry Pi runtime | systemd units, micro-ROS agent, SO-ARM bridge, LiDAR support | [`pi/`](pi/) |
+| Gamepad coordinator | dead-man controls and ROS command translation | [`pi/robot_teleop/`](pi/robot_teleop/) |
+| Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
+| Operator controls | control map and pre-motion checks | [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md) |
 
-The Pi starts these user services automatically (user lingering is required):
+## Repository status
 
-- `gamepad-joy.service` publishes `/joy`.
-- `robot-teleop.service` publishes `/teleop/cmd_vel`, `/teleop/neck_angle`,
-  `/soarm/command_delta_ticks`, and `/set_autonomous`.
-- `micro-ros-agent.service` connects the ESP32 on `/dev/robot-esp32` at 921600
-  baud.
+The software is an integration project for a specific physical robot, not a
+general-purpose robot distribution. Hardware calibration, controller mapping,
+and USB device names must be verified on the target system before deployment.
+The drive calibration values in firmware and the SO-ARM EEPROM travel limits
+are robot-specific.
 
-The ESP32 node is `/mobile_robot`. It subscribes to `/cmd_vel`,
-`/teleop/cmd_vel`, `/set_autonomous`, and `/teleop/neck_angle`, and publishes
-encoder-based `nav_msgs/msg/Odometry` on `/odom` with frames `odom` and
-`base_link`.
+Use `main` for the current integrated code. The remote `simulation-sync`
+branch was merged into `main` and has no remaining unique commits; it can be
+deleted once its history is no longer needed.
 
-## Firmware layout
+## Quick start
 
-The firmware is split by responsibility: hardware drivers are in
-`wheel_encoders.*`, `differential_drive.*`, and `neck_servo.*`; motion
-estimation is in `odometry.*`; robot modes and command timeout safety are in
-`robot_controller.*`; and ROS topics are isolated in `micro_ros_node.*`.
-Physical pins and calibration values are collected in `robot_config.h`.
+### Run the simulation
 
-## Safety
+The simulator has no ROS or hardware dependency. From the repository root:
 
-Test with the wheels lifted, the arm supported, and an emergency power
-disconnect available. The neck starts at 120 degrees and is slew-limited. Keep
-the servo on an adequately rated supply with a common ground; rate limiting
-does not fix an undersized power rail. Odometry wheel CPR, diameter, and track
-width are provisional until calibrated.
+```bash
+python3 -m pip install --user pybullet
+python3 simulation/pybullet_sim.py --seconds 20
+```
 
-## Checks on the Pi
+Use `--gui`, `--2d`, `--2d-live`, or `--2d-gui` for visual modes. See the
+[simulation guide](simulation/README.md) for dependencies and options.
+
+### Build ESP32 firmware
+
+Install PlatformIO, connect the intended ESP32, and build the production image:
+
+```bash
+python3 -m platformio run -e esp32dev
+```
+
+The diagnostic environments (`servo_sweep`, `servo_idle`, and
+`motor_diagnostic`) intentionally bypass parts of the production runtime. Use
+them only with the matching physical checks and safety setup.
+
+[`deploy.sh`](deploy.sh) builds locally and flashes the ESP32 attached to the
+Pi over `/dev/ttyUSB0`. It stops the user-level micro-ROS agent while the port
+is in use and restarts it only for the production image. Review the script and
+confirm the serial device before running it.
+
+### Prepare the Pi runtime
+
+The Pi services and their verification commands are documented in the
+[Pi runtime guide](pi/README.md). The gamepad coordinator has its own
+[installation and mapping guide](pi/robot_teleop/README.md).
+
+Before enabling any motion, verify the ROS graph and controller input:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-ros2 node list
-ros2 topic list
+ros2 topic echo /joy
 ros2 topic echo /odom --once
 systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
 ```
 
-The coordinator source and unit file are in `pi/robot_teleop/`. Run its tests
-without ROS with:
+## Development checks
+
+Run the coordinator tests without ROS or hardware:
 
 ```bash
 PYTHONPATH=pi/robot_teleop/src python3 -m unittest discover -s pi/robot_teleop/tests -v
 ```
+
+For any firmware or runtime change, also check the relevant physical interface
+on the robot with motion inhibited before attempting a lifted-wheel test.
+
+## Documentation map
+
+- [Gamepad controls and safety checks](docs/gamepad-control-map.md)
+- [Raspberry Pi runtime](pi/README.md)
+- [Gamepad coordinator](pi/robot_teleop/README.md)
+- [Simulation](simulation/README.md)
+
+## Contributing
+
+Keep changes small and reviewable, avoid committing generated files or
+credentials, and document any robot-specific calibration change with its
+measurement source. Do not merge or deploy motion-related changes without a
+proportionate hardware safety check.

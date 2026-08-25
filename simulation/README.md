@@ -1,8 +1,7 @@
 # Lightweight robot simulation
 
-This simulation loads the supplied v6 robot model directly:
-
-`/mnt/c/Users/abdul/Downloads/home_mobile_manipulator_v6_real_base_layout.urdf`
+This simulation loads the supplied v6 robot model directly from this
+repository: `simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf`.
 
 It uses PyBullet in `DIRECT` mode by default, so it does not require a GPU,
 Gazebo, ROS, or RViz. The model includes the actual base plate dimensions,
@@ -77,8 +76,10 @@ python3 simulation/pybullet_sim.py --2d-live --seconds 60 \
 This is the sensor layer needed before adding an occupancy-grid SLAM
 consumer; the simulator still does not perform SLAM itself.
 
-Set `ROBOT_URDF` if the file is moved:
+Set `ROBOT_URDF`, or pass `--urdf`, to use a different model:
 
 ```bash
 ROBOT_URDF=/path/to/robot.urdf python3 simulation/pybullet_sim.py
+# equivalent:
+python3 simulation/pybullet_sim.py --urdf /path/to/robot.urdf
 ```

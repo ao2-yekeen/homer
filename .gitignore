@@ -1,3 +1,5 @@
 .pio/
 .vscode/
 sync.log
+__pycache__/
+*.py[cod]
