@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "motion_enabled": true,
+  "motion_enabled": false,
   "joint_order": [
     "shoulder_pan",
     "shoulder_lift",
