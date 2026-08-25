@@ -260,10 +260,25 @@ class SoArmBridge(Node):
         position trajectory can be replayed without bypassing EEPROM limits or
         the bridge's slow, incremental motion path.
         """
-        pose = self._valid_pose(list(message.data))
-        if pose is None:
-            self.get_logger().error("Absolute pose must contain six in-limit tick values")
+        if len(message.data) != len(SERVO_IDS):
+            self.get_logger().error("Absolute pose must contain exactly six tick values")
             return
+        try:
+            requested = [int(value) for value in message.data]
+        except (TypeError, ValueError):
+            self.get_logger().error("Absolute pose contains a non-integer tick value")
+            return
+        # Feedback can differ from an EEPROM endpoint by a tick because of
+        # servo resolution. Clamp recorded feedback rather than rejecting the
+        # whole sample, while never issuing an out-of-limit target.
+        pose = [
+            max(minimum, min(value, maximum))
+            for value, (minimum, maximum) in zip(requested, self.joint_tick_limits)
+        ]
+        if pose != requested:
+            self.get_logger().warning(
+                f"Clamped recorded pose to EEPROM limits: requested={requested}; target={pose}"
+            )
         try:
             with self.lock:
                 self.targets = self.read_positions()
