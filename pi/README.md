@@ -32,3 +32,42 @@ systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
 stable `/dev/robot-lidar` device link and restarts automatically if the USB
 device or driver temporarily disappears.
+
+## SO-ARM named poses (Day 1)
+
+`soarm_ros_bridge.py` provides manual jog commands on
+`/soarm/command_delta_ticks` and guarded named-pose commands on
+`/soarm/command_named_pose`. Named poses are stored in
+`soarm_named_poses.json`; they are intentionally disabled by default and no
+sample coordinates are supplied.
+
+Only with the arm supported, an accessible emergency power disconnect, and the
+specific physical pose already checked for mast, base, camera, platform, and
+cable clearance, capture it without moving the arm:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 ~/soarm_pose_capture.py home --confirm-safe
+```
+
+Repeat for `ready`, `approach`, `grasp`, and `lift`. Keep
+`motion_enabled: false` while measuring and checking the transitions. After
+all required paths have been physically tested at the configured conservative
+rate, set it to `true` in `~/soarm_named_poses.json` and restart the bridge.
+
+Then call one stored pose by name:
+
+```bash
+ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: home}"
+```
+
+Stop an active named-pose move immediately (the bridge holds the live joint
+positions):
+
+```bash
+ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: stop}"
+```
+
+`REQUIRES_HARDWARE_TEST`: capture, transition validation, collision checks,
+and stop verification remain physical tasks; do not treat software checks as
+evidence that a pose is safe.

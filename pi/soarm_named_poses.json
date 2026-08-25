@@ -1,0 +1,20 @@
+{
+  "format_version": 1,
+  "motion_enabled": false,
+  "joint_order": [
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper"
+  ],
+  "poses": {
+    "home": null,
+    "ready": null,
+    "approach": null,
+    "grasp": null,
+    "lift": null
+  },
+  "notes": "Capture only physically checked poses. Keep motion_enabled false until all intended paths, clearances, and stop command have been verified on the robot."
+}
