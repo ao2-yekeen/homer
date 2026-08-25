@@ -243,6 +243,9 @@ class SoArmBridge(Node):
             # repeatedly commanding only a few ticks ahead of feedback can
             # leave it inside its position deadband indefinitely.
             self.targets = self.read_positions()
+            # Named poses position the arm only. Grasp open/close is an
+            # explicit action so an arm transition cannot displace an object.
+            pose[-1] = self.targets[-1]
             self.pose_target = pose
             self.motion_active = True
         self.get_logger().info(
