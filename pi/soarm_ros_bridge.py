@@ -56,6 +56,7 @@ COMMAND_TIMEOUT_S = 0.25
 # operator has checked every required clearance.
 POSE_STEP_TICKS = 5
 POSE_STEP_PERIOD_S = 0.10
+POSE_COMPLETE_TOLERANCE_TICKS = 12
 POSE_CONFIG_PATH = Path(__file__).with_name("soarm_named_poses.json")
 
 
@@ -255,7 +256,10 @@ class SoArmBridge(Node):
             with self.lock:
                 current = self.read_positions()
                 target = self.pose_target
-                if all(abs(position - desired) <= 2 for position, desired in zip(current, target)):
+                if all(
+                    abs(position - desired) <= POSE_COMPLETE_TOLERANCE_TICKS
+                    for position, desired in zip(current, target)
+                ):
                     self.targets = target
                     self.pose_target = None
                     self.motion_active = False
