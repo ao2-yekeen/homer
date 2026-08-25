@@ -41,6 +41,19 @@ device or driver temporarily disappears.
 `soarm_named_poses.json`; they are intentionally disabled by default and no
 sample coordinates are supplied.
 
+At startup the bridge reads the travel limits directly from each servo EEPROM;
+it does not apply separate guessed collision limits. Last verified on
+2026-08-25:
+
+| Joint | EEPROM tick range |
+| --- | --- |
+| shoulder_pan | 730–3444 |
+| shoulder_lift | 1450–2446 |
+| elbow_flex | 890–2506 |
+| wrist_flex | 2315–3233 |
+| wrist_roll | 0–4095 |
+| gripper | 2034–3504 |
+
 Only with the arm supported, an accessible emergency power disconnect, and the
 specific physical pose already checked for mast, base, camera, platform, and
 cable clearance, capture it without moving the arm:
