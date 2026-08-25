@@ -237,9 +237,16 @@ class SoArmBridge(Node):
         if pose is None:
             return
         with self.lock:
+            # Ramp from the last target we send, not from live feedback. A
+            # servo can legitimately lag a low-speed command by several ticks;
+            # repeatedly commanding only a few ticks ahead of feedback can
+            # leave it inside its position deadband indefinitely.
+            self.targets = self.read_positions()
             self.pose_target = pose
             self.motion_active = True
-        self.get_logger().info(f"Starting named pose '{name}' at {POSE_STEP_TICKS} ticks/step")
+        self.get_logger().info(
+            f"Starting named pose '{name}' at {POSE_STEP_TICKS} ticks/step; target={pose}"
+        )
 
     def advance_named_pose(self) -> None:
         if self.pose_target is None:
@@ -254,21 +261,24 @@ class SoArmBridge(Node):
                     self.motion_active = False
                     self.get_logger().info("Named pose complete")
                     return
-                next_positions = [
-                    position + max(-POSE_STEP_TICKS, min(POSE_STEP_TICKS, desired - position))
-                    for position, desired in zip(current, target)
+                next_targets = [
+                    commanded + max(
+                        -POSE_STEP_TICKS, min(POSE_STEP_TICKS, desired - commanded)
+                    )
+                    for commanded, desired in zip(self.targets, target)
                 ]
-                for servo_id, position, next_position in zip(SERVO_IDS, current, next_positions):
-                    if position == next_position:
+                for servo_id, commanded, next_target in zip(SERVO_IDS, self.targets, next_targets):
+                    if commanded == next_target:
                         continue
                     result, error = self.packet.WritePosEx(
-                        servo_id, next_position, SLOW_SPEED, SLOW_ACCELERATION
+                        servo_id, next_target, SLOW_SPEED, SLOW_ACCELERATION
                     )
                     if result != COMM_SUCCESS or error != 0:
                         raise RuntimeError(
                             f"Named pose write failed for servo {servo_id} "
                             f"(result={result}, error={error})"
                         )
+                self.targets = next_targets
         except Exception as exc:
             self.get_logger().error(f"Named pose stopped after read/write failure: {exc}")
             self.stop_motion("named-pose read/write failure")
