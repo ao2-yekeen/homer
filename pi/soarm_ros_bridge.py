@@ -31,20 +31,22 @@ SERVO_NAMES = (
     "wrist_roll",
     "gripper",
 )
-# The previously available calibration belongs to a different arm pose/setup and
-# must not be used to correct live positions. STS position registers are 0–4095.
+# STS position registers are 0–4095.  The limits below were read directly from
+# this arm's servo EEPROM on 2026-08-25.  Keep these tick limits separate from
+# URDF radians: the simulation's joint-reference poses have not been aligned to
+# the physical arm yet.
 SERVO_TICK_MIN = 0
 SERVO_TICK_MAX = 4095
 # Joint 2 (shoulder lift) approaches the neck as its tick value decreases.
 # The measured clear, non-contact position was 1359.  Keep a ~90-tick margin
 # so that all ROS commands are contained outside the collision zone.
 JOINT_TICK_LIMITS = (
-    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # shoulder_pan
+    (730, 3444),  # shoulder_pan: servo EEPROM range
     (1450, 2443),  # shoulder_lift: neck-collision guard (servo EEPROM range)
     (890, 2506),  # elbow_flex: body-clearance limit (servo EEPROM range)
     (2438, 3233),  # wrist_flex: gripper/body clearance (servo EEPROM range)
     (SERVO_TICK_MIN, SERVO_TICK_MAX),  # wrist_roll
-    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # gripper
+    (2034, 3504),  # gripper: servo EEPROM range
 )
 MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
