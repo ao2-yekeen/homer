@@ -203,8 +203,8 @@ class SoArmBridge(Node):
             self.stop_motion("named-pose stop command")
             self.publish_state()
             return
-        if name not in {"home", "ready", "approach", "grasp", "lift"}:
-            self.get_logger().error("Unknown named pose; use home, ready, approach, grasp, lift, or stop")
+        if name not in {"home", "approach", "grasp", "lift"}:
+            self.get_logger().error("Unknown named pose; use home, approach, grasp, lift, or stop")
             return
         pose = self.load_named_pose(name)
         if pose is None:

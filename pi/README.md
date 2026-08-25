@@ -50,7 +50,7 @@ source /opt/ros/jazzy/setup.bash
 python3 ~/soarm_pose_capture.py home --confirm-safe
 ```
 
-Repeat for `ready`, `approach`, `grasp`, and `lift`. Keep
+Repeat for `approach`, `grasp`, and `lift`. Keep
 `motion_enabled: false` while measuring and checking the transitions. After
 all required paths have been physically tested at the configured conservative
 rate, set it to `true` in `~/soarm_named_poses.json` and restart the bridge.

@@ -13,7 +13,7 @@ from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray
 
 
-POSE_NAMES = ("home", "ready", "approach", "grasp", "lift")
+POSE_NAMES = ("home", "approach", "grasp", "lift")
 JOINT_ORDER = (
     "shoulder_pan",
     "shoulder_lift",

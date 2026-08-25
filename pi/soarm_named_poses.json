@@ -11,7 +11,6 @@
   ],
   "poses": {
     "home": null,
-    "ready": null,
     "approach": null,
     "grasp": null,
     "lift": null
