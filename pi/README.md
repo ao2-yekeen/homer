@@ -101,6 +101,10 @@ incremental motion path as named poses. `Ctrl-C` stops playback and holds the
 live pose. This is a hardware-validation step, not evidence that a recorded
 trajectory is safe in a changed workspace.
 
+By default the player removes a leading held-pose section smaller than 10
+ticks, so manual preparation time before the first real movement is not
+replayed. Use `--leading-idle-threshold 0` to preserve that delay.
+
 `REQUIRES_HARDWARE_TEST`: capture, transition validation, collision checks,
 and stop verification remain physical tasks; do not treat software checks as
 evidence that a pose is safe.

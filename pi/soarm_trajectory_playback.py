@@ -36,15 +36,36 @@ def recorded_states(bag_path: str) -> list[tuple[int, list[int]]]:
     return states
 
 
+def trim_leading_idle(
+    states: list[tuple[int, list[int]]], threshold_ticks: int
+) -> list[tuple[int, list[int]]]:
+    """Drop initial samples that are only held-pose feedback noise."""
+    if threshold_ticks == 0:
+        return states
+    baseline = states[0][1]
+    for index, (_, pose) in enumerate(states):
+        if max(abs(value - initial) for value, initial in zip(pose, baseline)) >= threshold_ticks:
+            return states[index:]
+    return states
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("bag_path", help="ros2 bag directory containing manual state recording")
     parser.add_argument("--rate", type=float, default=1.0, help="timeline multiplier (default: 1.0)")
+    parser.add_argument(
+        "--leading-idle-threshold",
+        type=int,
+        default=10,
+        help="drop leading samples below this pose change in ticks; use 0 to keep all (default: 10)",
+    )
     args = parser.parse_args()
     if args.rate <= 0:
         parser.error("--rate must be positive")
+    if args.leading_idle_threshold < 0:
+        parser.error("--leading-idle-threshold cannot be negative")
 
-    states = recorded_states(args.bag_path)
+    states = trim_leading_idle(recorded_states(args.bag_path), args.leading_idle_threshold)
     rclpy.init()
     node = Node("soarm_trajectory_playback")
     pose_publisher = node.create_publisher(Int16MultiArray, POSE_TOPIC, 10)
