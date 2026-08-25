@@ -74,9 +74,9 @@ Then call one stored pose by name:
 ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: home}"
 ```
 
-Named poses move the five arm joints and preserve the live gripper position.
-Open and close the gripper as a separate, deliberate action; do not rely on an
-arm pose transition to manipulate an object.
+Named poses command all six recorded joint states, including the gripper. The
+gripper value captured with each pose is therefore part of that pose's physical
+configuration.
 
 Stop an active named-pose move immediately (the bridge holds the live joint
 positions):
