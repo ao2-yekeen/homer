@@ -85,6 +85,22 @@ positions):
 ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: stop}"
 ```
 
+## Manual trajectory playback
+
+For a torque-off manual recording that contains `/soarm/state_ticks`, replay
+the recorded absolute poses only after first reaching the same APPROACH pose:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 ~/soarm_trajectory_playback.py ~/soarm_trajectories/manual_grasp_lift_<timestamp>
+```
+
+The player publishes `/soarm/command_pose_ticks`; the bridge validates every
+pose against the live EEPROM limits and follows it through the same slow
+incremental motion path as named poses. `Ctrl-C` stops playback and holds the
+live pose. This is a hardware-validation step, not evidence that a recorded
+trajectory is safe in a changed workspace.
+
 `REQUIRES_HARDWARE_TEST`: capture, transition validation, collision checks,
 and stop verification remain physical tasks; do not treat software checks as
 evidence that a pose is safe.

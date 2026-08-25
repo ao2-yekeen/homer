@@ -4,6 +4,7 @@
 Topics:
   /soarm/state_ticks          std_msgs/msg/Int16MultiArray
   /soarm/command_delta_ticks  std_msgs/msg/Int16MultiArray
+  /soarm/command_pose_ticks   std_msgs/msg/Int16MultiArray
   /soarm/command_named_pose   std_msgs/msg/String
 
 Command order: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex,
@@ -77,6 +78,9 @@ class SoArmBridge(Node):
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
+        )
+        self.create_subscription(
+            Int16MultiArray, "/soarm/command_pose_ticks", self.pose_command_callback, 10
         )
         self.create_subscription(String, "/soarm/command_named_pose", self.named_pose_callback, 10)
         self.create_timer(1.0, self.publish_state)
@@ -248,6 +252,26 @@ class SoArmBridge(Node):
         self.get_logger().info(
             f"Starting named pose '{name}' at {POSE_STEP_TICKS} ticks/step; target={pose}"
         )
+
+    def pose_command_callback(self, message: Int16MultiArray) -> None:
+        """Follow a validated absolute six-joint target at named-pose speed.
+
+        This is intentionally separate from manual delta commands so a recorded
+        position trajectory can be replayed without bypassing EEPROM limits or
+        the bridge's slow, incremental motion path.
+        """
+        pose = self._valid_pose(list(message.data))
+        if pose is None:
+            self.get_logger().error("Absolute pose must contain six in-limit tick values")
+            return
+        try:
+            with self.lock:
+                self.targets = self.read_positions()
+                self.pose_target = pose
+                self.motion_active = True
+            self.get_logger().info(f"Starting recorded pose target={pose}")
+        except Exception as exc:
+            self.get_logger().error(f"Recorded pose rejected after read failure: {exc}")
 
     def advance_named_pose(self) -> None:
         if self.pose_target is None:
