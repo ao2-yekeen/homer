@@ -26,12 +26,20 @@
       3022,
       2601
     ],
-    "grasp": null,
+    "grasp": [
+      2100,
+      2446,
+      1951,
+      2542,
+      3021,
+      2368
+    ],
     "lift": null
   },
   "notes": "Capture only physically checked poses. Keep motion_enabled false until all intended paths, clearances, and stop command have been verified on the robot.",
   "captured_at_utc": {
     "home": "2026-08-25T14:44:22.474789+00:00",
-    "approach": "2026-08-25T14:50:03.483364+00:00"
+    "approach": "2026-08-25T14:50:03.483364+00:00",
+    "grasp": "2026-08-25T14:52:22.479198+00:00"
   }
 }
