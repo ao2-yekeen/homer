@@ -4,23 +4,19 @@
 Topics:
   /soarm/state_ticks          std_msgs/msg/Int16MultiArray
   /soarm/command_delta_ticks  std_msgs/msg/Int16MultiArray
-  /soarm/command_named_pose   std_msgs/msg/String
 
 Command order: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex,
 wrist_roll, gripper. Each command is relative to the current servo position
 and is clipped to +/-20 ticks. The bridge starts read-only.
 """
 
-import json
 import sys
 import threading
 import time
-from pathlib import Path
-from typing import Optional
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray, String
+from std_msgs.msg import Int16MultiArray
 
 sys.path.insert(0, "/home/robot-b")
 from STservo_sdk import COMM_SUCCESS, PortHandler, sts  # type: ignore
@@ -56,12 +52,6 @@ MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
 COMMAND_TIMEOUT_S = 0.25
-# Named poses are deliberately slower than manual jog commands.  They are
-# captured from the live arm and remain disabled in configuration until an
-# operator has checked every required clearance.
-POSE_STEP_TICKS = 5
-POSE_STEP_PERIOD_S = 0.10
-POSE_CONFIG_PATH = Path(__file__).with_name("soarm_named_poses.json")
 
 
 class SoArmBridge(Node):
@@ -74,17 +64,14 @@ class SoArmBridge(Node):
         self.packet = sts(self.port)
         self.motion_active = False
         self.last_motion_command_s = time.monotonic()
-        self.pose_target: Optional[list[int]] = None
         self._verify_servos()
         self.targets = self.read_positions()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
         )
-        self.create_subscription(String, "/soarm/command_named_pose", self.named_pose_callback, 10)
         self.create_timer(1.0, self.publish_state)
         self.create_timer(0.05, self.enforce_command_watchdog)
-        self.create_timer(POSE_STEP_PERIOD_S, self.advance_named_pose)
         self.publish_state()
         self.get_logger().info(
             "Ready. Commands are relative, clipped to +/-20 ticks, speed=25. "
@@ -155,96 +142,11 @@ class SoArmBridge(Node):
         except Exception as exc:
             self.get_logger().error(f"Unable to stop motion: {exc}")
         finally:
-            self.pose_target = None
             self.motion_active = False
 
     def enforce_command_watchdog(self) -> None:
-        if (
-            self.motion_active
-            and self.pose_target is None
-            and time.monotonic() - self.last_motion_command_s > COMMAND_TIMEOUT_S
-        ):
+        if self.motion_active and time.monotonic() - self.last_motion_command_s > COMMAND_TIMEOUT_S:
             self.stop_motion("command watchdog expired")
-
-    @staticmethod
-    def _valid_pose(values: object) -> Optional[list[int]]:
-        if not isinstance(values, list) or len(values) != len(SERVO_IDS):
-            return None
-        try:
-            pose = [int(value) for value in values]
-        except (TypeError, ValueError):
-            return None
-        if any(
-            value < minimum or value > maximum
-            for value, (minimum, maximum) in zip(pose, JOINT_TICK_LIMITS)
-        ):
-            return None
-        return pose
-
-    def load_named_pose(self, name: str) -> Optional[list[int]]:
-        try:
-            config = json.loads(POSE_CONFIG_PATH.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            self.get_logger().error(f"Cannot read named-pose config: {exc}")
-            return None
-        if config.get("motion_enabled") is not True:
-            self.get_logger().error(
-                "Named-pose motion is disabled. Capture and physically validate poses first."
-            )
-            return None
-        pose = self._valid_pose(config.get("poses", {}).get(name))
-        if pose is None:
-            self.get_logger().error(f"Named pose '{name}' is missing or violates joint limits")
-        return pose
-
-    def named_pose_callback(self, message: String) -> None:
-        name = message.data.strip().lower()
-        if name == "stop":
-            self.stop_motion("named-pose stop command")
-            self.publish_state()
-            return
-        if name not in {"home", "ready", "approach", "grasp", "lift"}:
-            self.get_logger().error("Unknown named pose; use home, ready, approach, grasp, lift, or stop")
-            return
-        pose = self.load_named_pose(name)
-        if pose is None:
-            return
-        with self.lock:
-            self.pose_target = pose
-            self.motion_active = True
-        self.get_logger().info(f"Starting named pose '{name}' at {POSE_STEP_TICKS} ticks/step")
-
-    def advance_named_pose(self) -> None:
-        if self.pose_target is None:
-            return
-        try:
-            with self.lock:
-                current = self.read_positions()
-                target = self.pose_target
-                if all(abs(position - desired) <= 2 for position, desired in zip(current, target)):
-                    self.targets = target
-                    self.pose_target = None
-                    self.motion_active = False
-                    self.get_logger().info("Named pose complete")
-                    return
-                next_positions = [
-                    position + max(-POSE_STEP_TICKS, min(POSE_STEP_TICKS, desired - position))
-                    for position, desired in zip(current, target)
-                ]
-                for servo_id, position, next_position in zip(SERVO_IDS, current, next_positions):
-                    if position == next_position:
-                        continue
-                    result, error = self.packet.WritePosEx(
-                        servo_id, next_position, SLOW_SPEED, SLOW_ACCELERATION
-                    )
-                    if result != COMM_SUCCESS or error != 0:
-                        raise RuntimeError(
-                            f"Named pose write failed for servo {servo_id} "
-                            f"(result={result}, error={error})"
-                        )
-        except Exception as exc:
-            self.get_logger().error(f"Named pose stopped after read/write failure: {exc}")
-            self.stop_motion("named-pose read/write failure")
 
     def command_callback(self, message: Int16MultiArray) -> None:
         if len(message.data) != len(SERVO_IDS):
@@ -257,10 +159,6 @@ class SoArmBridge(Node):
             return
         try:
             with self.lock:
-                if self.pose_target is not None:
-                    self.get_logger().info("Manual jog command cancelled named-pose motion")
-                    self.pose_target = None
-                    self.targets = self.read_positions()
                 targets = [
                     self.bounded_target(position, delta, minimum, maximum)
                     for position, delta, (minimum, maximum) in zip(
