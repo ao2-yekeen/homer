@@ -23,7 +23,13 @@ from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray, String
 
 sys.path.insert(0, "/home/robot-b")
-from STservo_sdk import COMM_SUCCESS, PortHandler, sts  # type: ignore
+from STservo_sdk import (  # type: ignore
+    COMM_SUCCESS,
+    STS_MAX_ANGLE_LIMIT_L,
+    STS_MIN_ANGLE_LIMIT_L,
+    PortHandler,
+    sts,
+)
 
 
 SERVO_IDS = (1, 2, 3, 4, 5, 6)
@@ -35,23 +41,12 @@ SERVO_NAMES = (
     "wrist_roll",
     "gripper",
 )
-# STS position registers are 0–4095.  The limits below were read directly from
-# this arm's servo EEPROM on 2026-08-25.  Keep these tick limits separate from
-# URDF radians: the simulation's joint-reference poses have not been aligned to
-# the physical arm yet.
+# STS position registers are 0–4095. Joint limits are read from the EEPROM of
+# each servo at bridge startup. Keep these tick limits separate from URDF
+# radians: the simulation's joint-reference poses have not been aligned to the
+# physical arm yet.
 SERVO_TICK_MIN = 0
 SERVO_TICK_MAX = 4095
-# Joint 2 (shoulder lift) approaches the neck as its tick value decreases.
-# The measured clear, non-contact position was 1359.  Keep a ~90-tick margin
-# so that all ROS commands are contained outside the collision zone.
-JOINT_TICK_LIMITS = (
-    (730, 3444),  # shoulder_pan: servo EEPROM range
-    (1450, 2443),  # shoulder_lift: neck-collision guard (servo EEPROM range)
-    (890, 2506),  # elbow_flex: body-clearance limit (servo EEPROM range)
-    (2438, 3233),  # wrist_flex: gripper/body clearance (servo EEPROM range)
-    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # wrist_roll
-    (2034, 3504),  # gripper: servo EEPROM range
-)
 MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
@@ -76,6 +71,7 @@ class SoArmBridge(Node):
         self.last_motion_command_s = time.monotonic()
         self.pose_target: Optional[list[int]] = None
         self._verify_servos()
+        self.joint_tick_limits = self.read_eeprom_limits()
         self.targets = self.read_positions()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
         self.create_subscription(
@@ -99,6 +95,38 @@ class SoArmBridge(Node):
                 raise RuntimeError(f"Servo {servo_id} did not respond (result={result}, error={error})")
             found.append(str(servo_id))
         self.get_logger().info("Verified SO-ARM servo IDs: " + ", ".join(found))
+
+    def read_eeprom_limits(self) -> tuple[tuple[int, int], ...]:
+        """Load the configured travel range from every servo's EEPROM."""
+        limits = []
+        for servo_id, name in zip(SERVO_IDS, SERVO_NAMES):
+            minimum, result, error = self.packet.read2ByteTxRx(
+                servo_id, STS_MIN_ANGLE_LIMIT_L
+            )
+            if result != COMM_SUCCESS or error != 0:
+                raise RuntimeError(
+                    f"Could not read EEPROM minimum for {name} "
+                    f"(result={result}, error={error})"
+                )
+            maximum, result, error = self.packet.read2ByteTxRx(
+                servo_id, STS_MAX_ANGLE_LIMIT_L
+            )
+            if result != COMM_SUCCESS or error != 0:
+                raise RuntimeError(
+                    f"Could not read EEPROM maximum for {name} "
+                    f"(result={result}, error={error})"
+                )
+            if not SERVO_TICK_MIN <= minimum <= maximum <= SERVO_TICK_MAX:
+                raise RuntimeError(f"Invalid EEPROM limits for {name}: {minimum}–{maximum}")
+            limits.append((minimum, maximum))
+        self.get_logger().info(
+            "Loaded EEPROM limits: "
+            + ", ".join(
+                f"{name}={minimum}–{maximum}"
+                for name, (minimum, maximum) in zip(SERVO_NAMES, limits)
+            )
+        )
+        return tuple(limits)
 
     def read_positions(self) -> list[int]:
         positions = []
@@ -166,8 +194,7 @@ class SoArmBridge(Node):
         ):
             self.stop_motion("command watchdog expired")
 
-    @staticmethod
-    def _valid_pose(values: object) -> Optional[list[int]]:
+    def _valid_pose(self, values: object) -> Optional[list[int]]:
         if not isinstance(values, list) or len(values) != len(SERVO_IDS):
             return None
         try:
@@ -176,7 +203,7 @@ class SoArmBridge(Node):
             return None
         if any(
             value < minimum or value > maximum
-            for value, (minimum, maximum) in zip(pose, JOINT_TICK_LIMITS)
+            for value, (minimum, maximum) in zip(pose, self.joint_tick_limits)
         ):
             return None
         return pose
@@ -264,7 +291,7 @@ class SoArmBridge(Node):
                 targets = [
                     self.bounded_target(position, delta, minimum, maximum)
                     for position, delta, (minimum, maximum) in zip(
-                        self.targets, requested, JOINT_TICK_LIMITS
+                        self.targets, requested, self.joint_tick_limits
                     )
                 ]
                 for servo_id, delta, target in zip(SERVO_IDS, requested, targets):
