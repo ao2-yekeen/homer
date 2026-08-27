@@ -1,4 +1,6 @@
+import json
 import unittest
+from pathlib import Path
 
 from gripper_contact import (
     AutoCloseAction,
@@ -68,6 +70,11 @@ class ContactConfigTests(unittest.TestCase):
 
 
 class AutoCloseConfigTests(unittest.TestCase):
+    def test_installed_configuration_stays_disabled_after_failed_validation(self):
+        config_path = Path(__file__).parents[1] / "gripper_contact.json"
+        values = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertFalse(AutoCloseConfig.from_dict(values).enabled)
+
     def test_rejects_unbounded_duration(self):
         with self.assertRaisesRegex(ValueError, "maximum_duration"):
             auto_config(maximum_duration_s=31)

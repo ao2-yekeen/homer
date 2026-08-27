@@ -49,16 +49,19 @@ does **not** by itself prove grasp success; post-lift vision or another
 independent signal must still confirm that the object moved with the hand.
 
 The 2026-08-27 calibration measured an empty endpoint of 2041–2042 ticks over
-five trials. Empty motion peaked at raw absolute load 84/current 4; confirmed
+five trials. Empty motion peaked at raw absolute load 84/current 4; initial
 cardboard and rigid-object contacts occurred at 2187–2213 ticks with raw
-absolute load 92–172/current 4–12. The checked-in thresholds require geometry,
-load, current, and tracking error together. The separation is narrow, so this
-remains `REQUIRES_HARDWARE_TEST` for additional shapes and materials. Add a
-fingertip force/contact sensor if later observations do not separate cleanly.
-Raw current remains in device-native units because its physical scale depends
-on the exact servo model and firmware.
+absolute load 92–172/current 4–12. A later blind hardware trial falsely reported
+`GRIPPED` at 2283 ticks without holding the object. This showed that servo
+load/current and tracking-error thresholds do not reliably distinguish
+fingertip contact from the mechanism's own resistance. Automatic closing is
+therefore disabled. Add a fingertip force/contact sensor, or validate a new
+method across empty, thin, thick, rigid, and compliant cases before re-enabling
+it. Raw current remains in device-native units because its physical scale
+depends on the exact servo model and firmware.
 
-Automatic closing is inert until an explicit command. It uses speed 10, aims
+Automatic closing is disabled in the checked-in configuration after failed
+hardware validation. If explicitly re-enabled for development, it uses speed 10, aims
 only at the calibrated empty endpoint, stops and rewrites the target to the live
 position after two matching contact samples, reports `EMPTY` at the endpoint,
 and reports `TIMED_OUT` after 12 seconds. A single geometrically plausible

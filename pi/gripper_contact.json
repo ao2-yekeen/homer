@@ -10,12 +10,12 @@
   "maximum_load_raw": 140,
   "maximum_current_raw": 10,
   "automatic_close": {
-    "enabled": true,
+    "enabled": false,
     "speed": 10,
     "acceleration": 3,
     "maximum_duration_s": 12.0,
     "endpoint_tolerance_ticks": 3,
     "relief_ticks": 0
   },
-  "calibration": "2026-08-27: five empty closes ended at 2041-2042 (peak |load| 84, current 4); confirmed cardboard/rigid contacts at 2187-2213 (|load| 92-172, current 4-12). REQUIRES_HARDWARE_TEST on additional objects before treating these thresholds as general."
+  "calibration": "2026-08-27: DISABLED_AFTER_FAILED_HARDWARE_VALIDATION. Five empty closes ended at 2041-2042 (peak |load| 84, current 4); initial cardboard/rigid contacts occurred at 2187-2213 (|load| 92-172, current 4-12), but a later blind trial falsely reported GRIPPED at 2283 without holding the object. Servo load/current thresholds do not reliably distinguish fingertip contact from mechanism resistance. Do not re-enable automatic close without new sensing or a newly validated method."
 }
