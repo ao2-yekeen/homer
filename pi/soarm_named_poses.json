@@ -1,0 +1,53 @@
+{
+  "format_version": 1,
+  "motion_enabled": true,
+  "joint_order": [
+    "shoulder_pan",
+    "shoulder_lift",
+    "elbow_flex",
+    "wrist_flex",
+    "wrist_roll",
+    "gripper"
+  ],
+  "poses": {
+    "home": [
+      2103,
+      2444,
+      2395,
+      2315,
+      3022,
+      2036
+    ],
+    "approach": [
+      2039,
+      2446,
+      2324,
+      2765,
+      3116,
+      2310
+    ],
+    "grasp": [
+      2103,
+      2446,
+      2015,
+      2598,
+      3021,
+      2370
+    ],
+    "lift": [
+      2103,
+      2446,
+      1956,
+      2945,
+      3022,
+      2367
+    ]
+  },
+  "notes": "Capture only physically checked poses. Keep motion_enabled false until all intended paths, clearances, and stop command have been verified on the robot.",
+  "captured_at_utc": {
+    "home": "2026-08-25T14:44:22.474789+00:00",
+    "approach": "2026-08-25T16:39:04+00:00",
+    "grasp": "2026-08-25T16:28:28+00:00",
+    "lift": "2026-08-25T14:53:17.479578+00:00"
+  }
+}

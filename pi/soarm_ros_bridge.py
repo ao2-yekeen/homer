@@ -4,6 +4,8 @@
 Topics:
   /soarm/state_ticks          std_msgs/msg/Int16MultiArray
   /soarm/command_delta_ticks  std_msgs/msg/Int16MultiArray
+  /soarm/command_pose_ticks   std_msgs/msg/Int16MultiArray
+  /soarm/command_named_pose   std_msgs/msg/String
   /soarm/gripper/telemetry    std_msgs/msg/String (JSON)
   /soarm/gripper/contact      std_msgs/msg/String
 
@@ -17,6 +19,7 @@ import sys
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 
 import rclpy
 from rclpy.node import Node
@@ -30,6 +33,8 @@ from STservo_sdk import (  # type: ignore
     STS_MOVING,
     STS_PRESENT_CURRENT_L,
     STS_PRESENT_LOAD_L,
+    STS_MAX_ANGLE_LIMIT_L,
+    STS_MIN_ANGLE_LIMIT_L,
     PortHandler,
     sts,
 )
@@ -44,23 +49,12 @@ SERVO_NAMES = (
     "wrist_roll",
     "gripper",
 )
-# STS position registers are 0–4095.  The limits below were read directly from
-# this arm's servo EEPROM on 2026-08-25.  Keep these tick limits separate from
-# URDF radians: the simulation's joint-reference poses have not been aligned to
-# the physical arm yet.
+# STS position registers are 0–4095. Joint limits are read from the EEPROM of
+# each servo at bridge startup. Keep these tick limits separate from URDF
+# radians: the simulation's joint-reference poses have not been aligned to the
+# physical arm yet.
 SERVO_TICK_MIN = 0
 SERVO_TICK_MAX = 4095
-# Joint 2 (shoulder lift) approaches the neck as its tick value decreases.
-# The measured clear, non-contact position was 1359.  Keep a ~90-tick margin
-# so that all ROS commands are contained outside the collision zone.
-JOINT_TICK_LIMITS = (
-    (730, 3444),  # shoulder_pan: servo EEPROM range
-    (1450, 2443),  # shoulder_lift: neck-collision guard (servo EEPROM range)
-    (890, 2506),  # elbow_flex: body-clearance limit (servo EEPROM range)
-    (2438, 3233),  # wrist_flex: gripper/body clearance (servo EEPROM range)
-    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # wrist_roll
-    (2034, 3504),  # gripper: servo EEPROM range
-)
 MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
@@ -68,6 +62,13 @@ COMMAND_TIMEOUT_S = 0.25
 GRIPPER_ID = SERVO_IDS[-1]
 GRIPPER_FEEDBACK_PERIOD_S = 0.1
 GRIPPER_CONFIG_PATH = Path(__file__).with_name("gripper_contact.json")
+# Named poses are deliberately slower than manual jog commands.  They are
+# captured from the live arm and remain disabled in configuration until an
+# operator has checked every required clearance.
+POSE_STEP_TICKS = 5
+POSE_STEP_PERIOD_S = 0.10
+POSE_COMPLETE_TOLERANCE_TICKS = 12
+POSE_CONFIG_PATH = Path(__file__).with_name("soarm_named_poses.json")
 
 
 class SoArmBridge(Node):
@@ -80,7 +81,9 @@ class SoArmBridge(Node):
         self.packet = sts(self.port)
         self.motion_active = False
         self.last_motion_command_s = time.monotonic()
+        self.pose_target: Optional[list[int]] = None
         self._verify_servos()
+        self.joint_tick_limits = self.read_eeprom_limits()
         self.targets = self.read_positions()
         self.contact_detector = self._load_contact_detector()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
@@ -93,9 +96,14 @@ class SoArmBridge(Node):
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
         )
+        self.create_subscription(
+            Int16MultiArray, "/soarm/command_pose_ticks", self.pose_command_callback, 10
+        )
+        self.create_subscription(String, "/soarm/command_named_pose", self.named_pose_callback, 10)
         self.create_timer(1.0, self.publish_state)
         self.create_timer(GRIPPER_FEEDBACK_PERIOD_S, self.publish_gripper_feedback)
         self.create_timer(0.05, self.enforce_command_watchdog)
+        self.create_timer(POSE_STEP_PERIOD_S, self.advance_named_pose)
         self.publish_state()
         self.get_logger().info(
             "Ready. Commands are relative, clipped to +/-20 ticks, speed=25. "
@@ -134,6 +142,38 @@ class SoArmBridge(Node):
                 raise RuntimeError(f"Servo {servo_id} did not respond (result={result}, error={error})")
             found.append(str(servo_id))
         self.get_logger().info("Verified SO-ARM servo IDs: " + ", ".join(found))
+
+    def read_eeprom_limits(self) -> tuple[tuple[int, int], ...]:
+        """Load the configured travel range from every servo's EEPROM."""
+        limits = []
+        for servo_id, name in zip(SERVO_IDS, SERVO_NAMES):
+            minimum, result, error = self.packet.read2ByteTxRx(
+                servo_id, STS_MIN_ANGLE_LIMIT_L
+            )
+            if result != COMM_SUCCESS or error != 0:
+                raise RuntimeError(
+                    f"Could not read EEPROM minimum for {name} "
+                    f"(result={result}, error={error})"
+                )
+            maximum, result, error = self.packet.read2ByteTxRx(
+                servo_id, STS_MAX_ANGLE_LIMIT_L
+            )
+            if result != COMM_SUCCESS or error != 0:
+                raise RuntimeError(
+                    f"Could not read EEPROM maximum for {name} "
+                    f"(result={result}, error={error})"
+                )
+            if not SERVO_TICK_MIN <= minimum <= maximum <= SERVO_TICK_MAX:
+                raise RuntimeError(f"Invalid EEPROM limits for {name}: {minimum}–{maximum}")
+            limits.append((minimum, maximum))
+        self.get_logger().info(
+            "Loaded EEPROM limits: "
+            + ", ".join(
+                f"{name}={minimum}–{maximum}"
+                for name, (minimum, maximum) in zip(SERVO_NAMES, limits)
+            )
+        )
+        return tuple(limits)
 
     def read_positions(self) -> list[int]:
         positions = []
@@ -248,11 +288,145 @@ class SoArmBridge(Node):
         except Exception as exc:
             self.get_logger().error(f"Unable to stop motion: {exc}")
         finally:
+            self.pose_target = None
             self.motion_active = False
 
     def enforce_command_watchdog(self) -> None:
-        if self.motion_active and time.monotonic() - self.last_motion_command_s > COMMAND_TIMEOUT_S:
+        if (
+            self.motion_active
+            and self.pose_target is None
+            and time.monotonic() - self.last_motion_command_s > COMMAND_TIMEOUT_S
+        ):
             self.stop_motion("command watchdog expired")
+
+    def _valid_pose(self, values: object) -> Optional[list[int]]:
+        if not isinstance(values, list) or len(values) != len(SERVO_IDS):
+            return None
+        try:
+            pose = [int(value) for value in values]
+        except (TypeError, ValueError):
+            return None
+        if any(
+            value < minimum or value > maximum
+            for value, (minimum, maximum) in zip(pose, self.joint_tick_limits)
+        ):
+            return None
+        return pose
+
+    def load_named_pose(self, name: str) -> Optional[list[int]]:
+        try:
+            config = json.loads(POSE_CONFIG_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            self.get_logger().error(f"Cannot read named-pose config: {exc}")
+            return None
+        if config.get("motion_enabled") is not True:
+            self.get_logger().error(
+                "Named-pose motion is disabled. Capture and physically validate poses first."
+            )
+            return None
+        pose = self._valid_pose(config.get("poses", {}).get(name))
+        if pose is None:
+            self.get_logger().error(f"Named pose '{name}' is missing or violates joint limits")
+        return pose
+
+    def named_pose_callback(self, message: String) -> None:
+        name = message.data.strip().lower()
+        if name == "stop":
+            self.stop_motion("named-pose stop command")
+            self.publish_state()
+            return
+        if name not in {"home", "approach", "grasp", "lift"}:
+            self.get_logger().error("Unknown named pose; use home, approach, grasp, lift, or stop")
+            return
+        pose = self.load_named_pose(name)
+        if pose is None:
+            return
+        with self.lock:
+            # Ramp from the last target we send, not from live feedback. A
+            # servo can legitimately lag a low-speed command by several ticks;
+            # repeatedly commanding only a few ticks ahead of feedback can
+            # leave it inside its position deadband indefinitely.
+            self.targets = self.read_positions()
+            self.contact_detector.command(pose[-1] - self.targets[-1])
+            self.pose_target = pose
+            self.motion_active = True
+        self.get_logger().info(
+            f"Starting named pose '{name}' at {POSE_STEP_TICKS} ticks/step; target={pose}"
+        )
+
+    def pose_command_callback(self, message: Int16MultiArray) -> None:
+        """Follow a validated absolute six-joint target at named-pose speed.
+
+        This is intentionally separate from manual delta commands so a recorded
+        position trajectory can be replayed without bypassing EEPROM limits or
+        the bridge's slow, incremental motion path.
+        """
+        if len(message.data) != len(SERVO_IDS):
+            self.get_logger().error("Absolute pose must contain exactly six tick values")
+            return
+        try:
+            requested = [int(value) for value in message.data]
+        except (TypeError, ValueError):
+            self.get_logger().error("Absolute pose contains a non-integer tick value")
+            return
+        # Feedback can differ from an EEPROM endpoint by a tick because of
+        # servo resolution. Clamp recorded feedback rather than rejecting the
+        # whole sample, while never issuing an out-of-limit target.
+        pose = [
+            max(minimum, min(value, maximum))
+            for value, (minimum, maximum) in zip(requested, self.joint_tick_limits)
+        ]
+        if pose != requested:
+            self.get_logger().warning(
+                f"Clamped recorded pose to EEPROM limits: requested={requested}; target={pose}"
+            )
+        try:
+            with self.lock:
+                self.targets = self.read_positions()
+                self.contact_detector.command(pose[-1] - self.targets[-1])
+                self.pose_target = pose
+                self.motion_active = True
+            self.get_logger().info(f"Starting recorded pose target={pose}")
+        except Exception as exc:
+            self.get_logger().error(f"Recorded pose rejected after read failure: {exc}")
+
+    def advance_named_pose(self) -> None:
+        if self.pose_target is None:
+            return
+        try:
+            with self.lock:
+                current = self.read_positions()
+                target = self.pose_target
+                if all(
+                    abs(position - desired) <= POSE_COMPLETE_TOLERANCE_TICKS
+                    for position, desired in zip(current, target)
+                ):
+                    self.targets = target
+                    self.pose_target = None
+                    self.motion_active = False
+                    self.get_logger().info("Named pose complete")
+                    return
+                next_targets = [
+                    commanded + max(
+                        -POSE_STEP_TICKS, min(POSE_STEP_TICKS, desired - commanded)
+                    )
+                    for commanded, desired in zip(self.targets, target)
+                ]
+                for servo_id, commanded, next_target in zip(SERVO_IDS, self.targets, next_targets):
+                    if commanded == next_target:
+                        continue
+                    result, error = self.packet.WritePosEx(
+                        servo_id, next_target, SLOW_SPEED, SLOW_ACCELERATION
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Named pose write failed for servo {servo_id} "
+                            f"(result={result}, error={error})"
+                        )
+                self.targets = next_targets
+        except Exception as exc:
+            self.get_logger().error(f"Named pose stopped after read/write failure: {exc}")
+            self.stop_motion("named-pose read/write failure")
 
     def command_callback(self, message: Int16MultiArray) -> None:
         if len(message.data) != len(SERVO_IDS):
@@ -268,7 +442,7 @@ class SoArmBridge(Node):
                 targets = [
                     self.bounded_target(position, delta, minimum, maximum)
                     for position, delta, (minimum, maximum) in zip(
-                        self.targets, requested, JOINT_TICK_LIMITS
+                        self.targets, requested, self.joint_tick_limits
                     )
                 ]
                 for servo_id, delta, target in zip(SERVO_IDS, requested, targets):

@@ -77,3 +77,78 @@ source /opt/ros/jazzy/setup.bash
 ros2 topic echo /soarm/gripper/telemetry
 ros2 topic echo /soarm/gripper/contact
 ```
+
+## SO-ARM named poses (Day 1)
+
+`soarm_ros_bridge.py` provides manual jog commands on
+`/soarm/command_delta_ticks` and guarded named-pose commands on
+`/soarm/command_named_pose`. Named poses are stored in
+`soarm_named_poses.json`.
+
+At startup the bridge reads the travel limits directly from each servo EEPROM;
+it does not apply separate guessed collision limits. Last verified on
+2026-08-25:
+
+| Joint | EEPROM tick range |
+| --- | --- |
+| shoulder_pan | 730–3444 |
+| shoulder_lift | 1450–2446 |
+| elbow_flex | 890–2506 |
+| wrist_flex | 2315–3233 |
+| wrist_roll | 0–4095 |
+| gripper | 2034–3504 |
+
+Only with the arm supported, an accessible emergency power disconnect, and the
+specific physical pose already checked for mast, base, camera, platform, and
+cable clearance, capture it without moving the arm:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 ~/soarm_pose_capture.py home --confirm-safe
+```
+
+Repeat for `approach`, `grasp`, and `lift`. Keep
+`motion_enabled: false` while measuring and checking the transitions. After
+all required paths have been physically tested at the configured conservative
+rate, set it to `true` in `~/soarm_named_poses.json` and restart the bridge.
+
+Then call one stored pose by name:
+
+```bash
+ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: home}"
+```
+
+Named poses command all six recorded joint states, including the gripper. The
+gripper value captured with each pose is therefore part of that pose's physical
+configuration.
+
+Stop an active named-pose move immediately (the bridge holds the live joint
+positions):
+
+```bash
+ros2 topic pub --once /soarm/command_named_pose std_msgs/msg/String "{data: stop}"
+```
+
+## Manual trajectory playback
+
+For a torque-off manual recording that contains `/soarm/state_ticks`, replay
+the recorded absolute poses only after first reaching the same APPROACH pose:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 ~/soarm_trajectory_playback.py ~/soarm_trajectories/manual_grasp_lift_<timestamp>
+```
+
+The player publishes `/soarm/command_pose_ticks`; the bridge validates every
+pose against the live EEPROM limits and follows it through the same slow
+incremental motion path as named poses. `Ctrl-C` stops playback and holds the
+live pose. This is a hardware-validation step, not evidence that a recorded
+trajectory is safe in a changed workspace.
+
+By default the player removes a leading held-pose section smaller than 10
+ticks, so manual preparation time before the first real movement is not
+replayed. Use `--leading-idle-threshold 0` to preserve that delay.
+
+`REQUIRES_HARDWARE_TEST`: capture, transition validation, collision checks,
+and stop verification remain physical tasks; do not treat software checks as
+evidence that a pose is safe.
