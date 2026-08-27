@@ -287,6 +287,7 @@ class SoArmBridge(Node):
                 String(data=json.dumps(feedback, separators=(",", ":")))
             )
             self.gripper_contact_pub.publish(String(data=state.value))
+            self.publish_auto_close_status()
             if action is not AutoCloseAction.NONE:
                 self.finish_automatic_close(action, feedback["position_ticks"])
             elif state in (
