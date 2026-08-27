@@ -1,11 +1,21 @@
 {
-  "enabled": false,
-  "closing_direction": 1,
-  "minimum_load_raw": 1,
-  "minimum_current_raw": 1,
-  "minimum_position_error_ticks": 1,
-  "empty_closed_position_ticks": 0,
-  "minimum_object_gap_ticks": 1,
-  "confirmation_samples": 5,
-  "notes": "REQUIRES_HARDWARE_TEST: replace every placeholder with measurements from repeated empty closes and representative object grasps before enabling. Raw current units depend on the exact servo model/firmware."
+  "enabled": true,
+  "closing_direction": -1,
+  "minimum_load_raw": 90,
+  "minimum_current_raw": 4,
+  "minimum_position_error_ticks": 20,
+  "empty_closed_position_ticks": 2042,
+  "minimum_object_gap_ticks": 100,
+  "confirmation_samples": 2,
+  "maximum_load_raw": 140,
+  "maximum_current_raw": 10,
+  "automatic_close": {
+    "enabled": true,
+    "speed": 10,
+    "acceleration": 3,
+    "maximum_duration_s": 12.0,
+    "endpoint_tolerance_ticks": 3,
+    "relief_ticks": 0
+  },
+  "calibration": "2026-08-27: five empty closes ended at 2041-2042 (peak |load| 84, current 4); confirmed cardboard/rigid contacts at 2187-2213 (|load| 92-172, current 4-12). REQUIRES_HARDWARE_TEST on additional objects before treating these thresholds as general."
 }

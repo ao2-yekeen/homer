@@ -8,6 +8,8 @@ Topics:
   /soarm/command_named_pose   std_msgs/msg/String
   /soarm/gripper/telemetry    std_msgs/msg/String (JSON)
   /soarm/gripper/contact      std_msgs/msg/String
+  /soarm/gripper/command      std_msgs/msg/String (close or stop)
+  /soarm/gripper/auto_status  std_msgs/msg/String
 
 Command order: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex,
 wrist_roll, gripper. Each command is relative to the current servo position
@@ -25,7 +27,14 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray, String
 
-from gripper_contact import ContactConfig, GripperContactDetector
+from gripper_contact import (
+    AutoCloseAction,
+    AutoCloseConfig,
+    AutomaticCloseController,
+    ContactConfig,
+    ContactState,
+    GripperContactDetector,
+)
 
 sys.path.insert(0, "/home/robot-b")
 from STservo_sdk import (  # type: ignore
@@ -80,18 +89,22 @@ class SoArmBridge(Node):
             raise RuntimeError("Cannot open SO-ARM at /dev/robot-soarm, 1,000,000 baud")
         self.packet = sts(self.port)
         self.motion_active = False
+        self.gripper_closing_motion = False
         self.last_motion_command_s = time.monotonic()
         self.pose_target: Optional[list[int]] = None
         self._verify_servos()
         self.joint_tick_limits = self.read_eeprom_limits()
         self.targets = self.read_positions()
-        self.contact_detector = self._load_contact_detector()
+        self.contact_detector, self.auto_close = self._load_gripper_control()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
         self.gripper_telemetry_pub = self.create_publisher(
             String, "/soarm/gripper/telemetry", 10
         )
         self.gripper_contact_pub = self.create_publisher(
             String, "/soarm/gripper/contact", 10
+        )
+        self.gripper_auto_status_pub = self.create_publisher(
+            String, "/soarm/gripper/auto_status", 10
         )
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
@@ -100,20 +113,25 @@ class SoArmBridge(Node):
             Int16MultiArray, "/soarm/command_pose_ticks", self.pose_command_callback, 10
         )
         self.create_subscription(String, "/soarm/command_named_pose", self.named_pose_callback, 10)
+        self.create_subscription(String, "/soarm/gripper/command", self.gripper_command_callback, 10)
         self.create_timer(1.0, self.publish_state)
         self.create_timer(GRIPPER_FEEDBACK_PERIOD_S, self.publish_gripper_feedback)
         self.create_timer(0.05, self.enforce_command_watchdog)
         self.create_timer(POSE_STEP_PERIOD_S, self.advance_named_pose)
         self.publish_state()
+        self.publish_auto_close_status()
         self.get_logger().info(
             "Ready. Commands are relative, clipped to +/-20 ticks, speed=25. "
             f"Order: {', '.join(SERVO_NAMES)}"
         )
 
-    def _load_contact_detector(self) -> GripperContactDetector:
+    def _load_gripper_control(
+        self,
+    ) -> tuple[GripperContactDetector, AutomaticCloseController]:
         try:
             values = json.loads(GRIPPER_CONFIG_PATH.read_text(encoding="utf-8"))
             config = ContactConfig.from_dict(values)
+            auto_config = AutoCloseConfig.from_dict(values)
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             self.get_logger().error(
                 f"Gripper contact detection disabled: invalid config: {exc}"
@@ -127,12 +145,28 @@ class SoArmBridge(Node):
                 empty_closed_position_ticks=0,
                 minimum_object_gap_ticks=1,
                 confirmation_samples=1,
+                maximum_load_raw=2,
+                maximum_current_raw=2,
+            )
+            auto_config = AutoCloseConfig(
+                enabled=False,
+                speed=10,
+                acceleration=3,
+                maximum_duration_s=5.0,
+                endpoint_tolerance_ticks=3,
+                relief_ticks=0,
             )
         if not config.enabled:
             self.get_logger().warning(
                 "Gripper contact detection is disabled pending hardware calibration"
             )
-        return GripperContactDetector(config)
+        if not auto_config.enabled:
+            self.get_logger().warning("Automatic gripper close is disabled")
+        return GripperContactDetector(config), AutomaticCloseController(
+            auto_config,
+            closing_direction=config.closing_direction,
+            empty_closed_position_ticks=config.empty_closed_position_ticks,
+        )
 
     def _verify_servos(self) -> None:
         found = []
@@ -235,6 +269,11 @@ class SoArmBridge(Node):
                 load_raw=feedback["load_raw"],
                 current_raw=feedback["current_raw"],
             )
+            action = self.auto_close.observe(
+                position_ticks=feedback["position_ticks"],
+                contact_state=state,
+                now_s=time.monotonic(),
+            )
             feedback["position_error_ticks"] = abs(
                 feedback["target_ticks"] - feedback["position_ticks"]
             )
@@ -243,12 +282,74 @@ class SoArmBridge(Node):
                 - feedback["position_ticks"]
             ) * self.contact_detector.config.closing_direction
             feedback["contact_state"] = state.value
+            feedback["automatic_close_state"] = self.auto_close.state.value
             self.gripper_telemetry_pub.publish(
                 String(data=json.dumps(feedback, separators=(",", ":")))
             )
             self.gripper_contact_pub.publish(String(data=state.value))
+            if action is not AutoCloseAction.NONE:
+                self.finish_automatic_close(action, feedback["position_ticks"])
+            elif state in (
+                ContactState.GRIPPED,
+                ContactState.PROTECTIVE_STOP,
+            ) and self.gripper_closing_motion:
+                # Contact protection applies to manual, recorded, and named-pose
+                # gripper closure too. Arm-only motion remains possible while an
+                # object is held.
+                self.stop_motion("gripper contact detected")
         except Exception as exc:
             self.get_logger().error(f"Gripper feedback read failed: {exc}")
+
+    def publish_auto_close_status(self) -> None:
+        self.gripper_auto_status_pub.publish(String(data=self.auto_close.state.value))
+
+    def finish_automatic_close(
+        self, action: AutoCloseAction, position_ticks: int
+    ) -> None:
+        relief = (
+            self.auto_close.config.relief_ticks
+            if action is AutoCloseAction.HOLD_GRIPPED
+            else 0
+        )
+        hold_target = (
+            position_ticks - self.contact_detector.config.closing_direction * relief
+        )
+        minimum, maximum = self.joint_tick_limits[-1]
+        hold_target = max(minimum, min(maximum, hold_target))
+        try:
+            with self.lock:
+                result, error = self.packet.WritePosEx(
+                    GRIPPER_ID,
+                    hold_target,
+                    self.auto_close.config.speed,
+                    self.auto_close.config.acceleration,
+                )
+                if result != COMM_SUCCESS or error != 0:
+                    raise RuntimeError(
+                        f"automatic hold failed (result={result}, error={error})"
+                    )
+                self.targets[-1] = hold_target
+            self.get_logger().info(
+                f"Automatic close ended: {self.auto_close.state.value}; "
+                f"position={position_ticks}; hold_target={hold_target}"
+            )
+        except Exception as exc:
+            self.get_logger().error(f"Unable to hold after automatic close: {exc}")
+            try:
+                self.hold_current_positions()
+            except Exception as stop_exc:
+                self.get_logger().error(
+                    f"CRITICAL: automatic close could not be stopped: {stop_exc}"
+                )
+        finally:
+            self.motion_active = False
+            self.gripper_closing_motion = False
+            if action not in (
+                AutoCloseAction.HOLD_GRIPPED,
+                AutoCloseAction.HOLD_PROTECTIVE_STOP,
+            ):
+                self.contact_detector.stop()
+            self.publish_auto_close_status()
 
     def hold_current_positions(self) -> None:
         """Cancel any remaining position trajectory by targeting each live position."""
@@ -290,11 +391,17 @@ class SoArmBridge(Node):
         finally:
             self.pose_target = None
             self.motion_active = False
+            self.gripper_closing_motion = False
+            self.contact_detector.stop()
+            if self.auto_close.active:
+                self.auto_close.stop()
+                self.publish_auto_close_status()
 
     def enforce_command_watchdog(self) -> None:
         if (
             self.motion_active
             and self.pose_target is None
+            and not self.auto_close.active
             and time.monotonic() - self.last_motion_command_s > COMMAND_TIMEOUT_S
         ):
             self.stop_motion("command watchdog expired")
@@ -341,13 +448,30 @@ class SoArmBridge(Node):
         pose = self.load_named_pose(name)
         if pose is None:
             return
+        if self.auto_close.active:
+            self.stop_motion("named-pose command interrupted automatic close")
         with self.lock:
             # Ramp from the last target we send, not from live feedback. A
             # servo can legitimately lag a low-speed command by several ticks;
             # repeatedly commanding only a few ticks ahead of feedback can
             # leave it inside its position deadband indefinitely.
             self.targets = self.read_positions()
-            self.contact_detector.command(pose[-1] - self.targets[-1])
+            gripper_delta = pose[-1] - self.targets[-1]
+            if (
+                gripper_delta * self.contact_detector.config.closing_direction > 0
+                and self.contact_detector.state in (
+                    ContactState.GRIPPED,
+                    ContactState.PROTECTIVE_STOP,
+                )
+            ):
+                self.get_logger().error(
+                    "Named pose rejected: open the gripper before commanding further closure"
+                )
+                return
+            self.contact_detector.command(gripper_delta)
+            self.gripper_closing_motion = (
+                gripper_delta * self.contact_detector.config.closing_direction > 0
+            )
             self.pose_target = pose
             self.motion_active = True
         self.get_logger().info(
@@ -380,10 +504,27 @@ class SoArmBridge(Node):
             self.get_logger().warning(
                 f"Clamped recorded pose to EEPROM limits: requested={requested}; target={pose}"
             )
+        if self.auto_close.active:
+            self.stop_motion("recorded pose interrupted automatic close")
         try:
             with self.lock:
                 self.targets = self.read_positions()
-                self.contact_detector.command(pose[-1] - self.targets[-1])
+                gripper_delta = pose[-1] - self.targets[-1]
+                if (
+                    gripper_delta * self.contact_detector.config.closing_direction > 0
+                    and self.contact_detector.state in (
+                        ContactState.GRIPPED,
+                        ContactState.PROTECTIVE_STOP,
+                    )
+                ):
+                    self.get_logger().error(
+                        "Recorded pose rejected: open the gripper before further closure"
+                    )
+                    return
+                self.contact_detector.command(gripper_delta)
+                self.gripper_closing_motion = (
+                    gripper_delta * self.contact_detector.config.closing_direction > 0
+                )
                 self.pose_target = pose
                 self.motion_active = True
             self.get_logger().info(f"Starting recorded pose target={pose}")
@@ -404,6 +545,8 @@ class SoArmBridge(Node):
                     self.targets = target
                     self.pose_target = None
                     self.motion_active = False
+                    self.gripper_closing_motion = False
+                    self.contact_detector.stop()
                     self.get_logger().info("Named pose complete")
                     return
                 next_targets = [
@@ -437,6 +580,19 @@ class SoArmBridge(Node):
             self.stop_motion("zero command")
             self.publish_state()
             return
+        gripper_is_closing = (
+            requested[-1] * self.contact_detector.config.closing_direction > 0
+        )
+        if gripper_is_closing and self.contact_detector.state in (
+            ContactState.GRIPPED,
+            ContactState.PROTECTIVE_STOP,
+        ):
+            self.get_logger().error(
+                "Closing command blocked: open the gripper to clear latched contact"
+            )
+            return
+        if self.auto_close.active:
+            self.stop_motion("manual command interrupted automatic close")
         try:
             with self.lock:
                 targets = [
@@ -461,12 +617,89 @@ class SoArmBridge(Node):
             # a travel limit. An opening request must always clear a latched
             # contact state.
             self.contact_detector.command(requested[-1])
+            self.gripper_closing_motion = gripper_is_closing
+            if requested[-1] and not gripper_is_closing:
+                self.auto_close.reset()
+                self.publish_auto_close_status()
             self.motion_active = True
             self.last_motion_command_s = time.monotonic()
             self.get_logger().info(f"Applied capped delta {requested}; targets {targets}")
             self.publish_state()
         except Exception as exc:
             self.get_logger().error(f"Command rejected after read/write failure: {exc}")
+
+    def gripper_command_callback(self, message: String) -> None:
+        command = message.data.strip().lower()
+        if command == "stop":
+            self.stop_motion("automatic gripper stop command")
+            self.publish_state()
+            return
+        if command != "close":
+            self.get_logger().error("Unknown gripper command; use close or stop")
+            return
+        if not self.contact_detector.config.enabled or not self.auto_close.config.enabled:
+            self.get_logger().error("Automatic close is disabled by gripper configuration")
+            return
+        if self.contact_detector.state in (
+            ContactState.GRIPPED,
+            ContactState.PROTECTIVE_STOP,
+        ):
+            self.get_logger().error(
+                "Automatic close rejected: open the gripper to clear latched contact"
+            )
+            return
+        if self.motion_active:
+            self.stop_motion("automatic gripper close superseded active motion")
+        endpoint = self.contact_detector.config.empty_closed_position_ticks
+        minimum, maximum = self.joint_tick_limits[-1]
+        if not minimum <= endpoint <= maximum:
+            self.get_logger().error(
+                f"Automatic close endpoint {endpoint} violates EEPROM limits {minimum}-{maximum}"
+            )
+            return
+        try:
+            at_endpoint = False
+            with self.lock:
+                self.targets = self.read_positions()
+                current_position = self.targets[-1]
+                remaining_ticks = (
+                    endpoint - current_position
+                ) * self.contact_detector.config.closing_direction
+                if remaining_ticks <= self.auto_close.config.endpoint_tolerance_ticks:
+                    at_endpoint = True
+                else:
+                    result, error = self.packet.WritePosEx(
+                        GRIPPER_ID,
+                        endpoint,
+                        self.auto_close.config.speed,
+                        self.auto_close.config.acceleration,
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"automatic close write failed (result={result}, error={error})"
+                        )
+                    self.targets[-1] = endpoint
+            if at_endpoint:
+                self.auto_close.start(time.monotonic())
+                action = self.auto_close.observe(
+                    position_ticks=current_position,
+                    contact_state=self.contact_detector.state,
+                    now_s=time.monotonic(),
+                )
+                self.finish_automatic_close(action, current_position)
+                return
+            self.contact_detector.command(self.contact_detector.config.closing_direction)
+            self.auto_close.start(time.monotonic())
+            self.motion_active = True
+            self.gripper_closing_motion = True
+            self.publish_auto_close_status()
+            self.get_logger().info(
+                f"Automatic close started: endpoint={endpoint}, "
+                f"speed={self.auto_close.config.speed}, "
+                f"timeout={self.auto_close.config.maximum_duration_s}s"
+            )
+        except Exception as exc:
+            self.get_logger().error(f"Automatic close rejected after read/write failure: {exc}")
 
     def destroy_node(self) -> bool:
         self.port.closePort()

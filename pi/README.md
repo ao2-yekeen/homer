@@ -40,35 +40,45 @@ The SO-ARM bridge passively reads servo ID 6 feedback at 10 Hz and publishes:
 | Topic | Type | Meaning |
 | --- | --- | --- |
 | `/soarm/gripper/telemetry` | `std_msgs/msg/String` | JSON containing position, commanded target, position error, signed raw load, raw current, moving flag, calibrated object gap, and contact state |
-| `/soarm/gripper/contact` | `std_msgs/msg/String` | `DISABLED`, `UNKNOWN`, `CLOSING`, or latched `GRIPPED` |
+| `/soarm/gripper/contact` | `std_msgs/msg/String` | `DISABLED`, `UNKNOWN`, `CLOSING`, latched `GRIPPED`, or latched `PROTECTIVE_STOP` |
+| `/soarm/gripper/command` | `std_msgs/msg/String` | Guarded automatic command: `close` or immediate `stop` |
+| `/soarm/gripper/auto_status` | `std_msgs/msg/String` | `IDLE`, `CLOSING`, `GRIPPED`, `EMPTY`, `STOPPED`, `TIMED_OUT`, or `PROTECTIVE_STOP` |
 
 `GRIPPED` means the gripper encountered evidence consistent with an object. It
 does **not** by itself prove grasp success; post-lift vision or another
 independent signal must still confirm that the object moved with the hand.
 
-Detection is disabled by default in `gripper_contact.json`. Do not enable the
-placeholder configuration. It must first be calibrated on the installed
-gripper servo, with the arm supported and stationary over a raised platform,
-an immediate power disconnect available, and no floor-level target:
+The 2026-08-27 calibration measured an empty endpoint of 2041–2042 ticks over
+five trials. Empty motion peaked at raw absolute load 84/current 4; confirmed
+cardboard and rigid-object contacts occurred at 2187–2213 ticks with raw
+absolute load 92–172/current 4–12. The checked-in thresholds require geometry,
+load, current, and tracking error together. The separation is narrow, so this
+remains `REQUIRES_HARDWARE_TEST` for additional shapes and materials. Add a
+fingertip force/contact sensor if later observations do not separate cleanly.
+Raw current remains in device-native units because its physical scale depends
+on the exact servo model and firmware.
 
-1. Keep `enabled` false and observe telemetry while stationary.
-2. Under direct supervision, record at least five slow empty closes and opens.
-   Determine the actual tick direction for closing and the repeatable
-   `empty_closed_position_ticks` value; do not infer direction from the
-   gamepad label.
-3. Record several slow closes on representative rigid objects that cannot be
-   crushed. Compare raw load, raw current, target error, and the difference
-   from the empty-closed position.
-4. Choose conservative thresholds only if the empty and object-contact samples
-   have clear separation. Keep `minimum_object_gap_ticks` larger than endpoint
-   repeatability/noise so the empty mechanical stop cannot look like an object.
-5. Set `confirmation_samples` to require sustained evidence, enable the config,
-   restart the bridge, and repeat supervised empty/object tests.
+Automatic closing is inert until an explicit command. It uses speed 10, aims
+only at the calibrated empty endpoint, stops and rewrites the target to the live
+position after two matching contact samples, reports `EMPTY` at the endpoint,
+and reports `TIMED_OUT` after 12 seconds. A single geometrically plausible
+sample at raw absolute load 140 or current 10 triggers `PROTECTIVE_STOP` without
+waiting for confirmation. Detected contact and protective stops block further
+closing until an explicit opening jog clears the latch. Arm-only motion remains
+available while a grasp is held.
 
-If the observations do not separate cleanly, leave detection disabled and add
-a suitable fingertip force/contact sensor instead. Raw current is intentionally
-reported in device-native units because its physical scale depends on the exact
-servo model and firmware.
+With the gripper already surrounding an object, hands clear, and the emergency
+power disconnect immediately available, start or stop one supervised trial:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic pub --once /soarm/gripper/command std_msgs/msg/String "{data: close}"
+ros2 topic pub --once /soarm/gripper/command std_msgs/msg/String "{data: stop}"
+```
+
+Monitor `/soarm/gripper/auto_status` and `/soarm/gripper/telemetry`. Pressure
+relief is implemented but configured at zero ticks until a supervised test
+shows that backing off will not drop thin objects.
 
 Read the passive stream with:
 
