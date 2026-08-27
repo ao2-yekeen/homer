@@ -86,6 +86,12 @@ Run the coordinator tests without ROS or hardware:
 PYTHONPATH=pi/robot_teleop/src python3 -m unittest discover -s pi/robot_teleop/tests -v
 ```
 
+Run the hardware-free gripper contact detector tests:
+
+```bash
+PYTHONPATH=pi python3 -m unittest discover -s pi/tests -v
+```
+
 For any firmware or runtime change, also check the relevant physical interface
 on the robot with motion inhibited before attempting a lifted-wheel test.
 

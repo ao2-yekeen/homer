@@ -1,0 +1,11 @@
+{
+  "enabled": false,
+  "closing_direction": 1,
+  "minimum_load_raw": 1,
+  "minimum_current_raw": 1,
+  "minimum_position_error_ticks": 1,
+  "empty_closed_position_ticks": 0,
+  "minimum_object_gap_ticks": 1,
+  "confirmation_samples": 5,
+  "notes": "REQUIRES_HARDWARE_TEST: replace every placeholder with measurements from repeated empty closes and representative object grasps before enabling. Raw current units depend on the exact servo model/firmware."
+}

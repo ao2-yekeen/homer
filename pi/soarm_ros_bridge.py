@@ -4,22 +4,35 @@
 Topics:
   /soarm/state_ticks          std_msgs/msg/Int16MultiArray
   /soarm/command_delta_ticks  std_msgs/msg/Int16MultiArray
+  /soarm/gripper/telemetry    std_msgs/msg/String (JSON)
+  /soarm/gripper/contact      std_msgs/msg/String
 
 Command order: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex,
 wrist_roll, gripper. Each command is relative to the current servo position
 and is clipped to +/-20 ticks. The bridge starts read-only.
 """
 
+import json
 import sys
 import threading
 import time
+from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, String
+
+from gripper_contact import ContactConfig, GripperContactDetector
 
 sys.path.insert(0, "/home/robot-b")
-from STservo_sdk import COMM_SUCCESS, PortHandler, sts  # type: ignore
+from STservo_sdk import (  # type: ignore
+    COMM_SUCCESS,
+    STS_MOVING,
+    STS_PRESENT_CURRENT_L,
+    STS_PRESENT_LOAD_L,
+    PortHandler,
+    sts,
+)
 
 
 SERVO_IDS = (1, 2, 3, 4, 5, 6)
@@ -52,6 +65,9 @@ MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
 COMMAND_TIMEOUT_S = 0.25
+GRIPPER_ID = SERVO_IDS[-1]
+GRIPPER_FEEDBACK_PERIOD_S = 0.1
+GRIPPER_CONFIG_PATH = Path(__file__).with_name("gripper_contact.json")
 
 
 class SoArmBridge(Node):
@@ -66,17 +82,49 @@ class SoArmBridge(Node):
         self.last_motion_command_s = time.monotonic()
         self._verify_servos()
         self.targets = self.read_positions()
+        self.contact_detector = self._load_contact_detector()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
+        self.gripper_telemetry_pub = self.create_publisher(
+            String, "/soarm/gripper/telemetry", 10
+        )
+        self.gripper_contact_pub = self.create_publisher(
+            String, "/soarm/gripper/contact", 10
+        )
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
         )
         self.create_timer(1.0, self.publish_state)
+        self.create_timer(GRIPPER_FEEDBACK_PERIOD_S, self.publish_gripper_feedback)
         self.create_timer(0.05, self.enforce_command_watchdog)
         self.publish_state()
         self.get_logger().info(
             "Ready. Commands are relative, clipped to +/-20 ticks, speed=25. "
             f"Order: {', '.join(SERVO_NAMES)}"
         )
+
+    def _load_contact_detector(self) -> GripperContactDetector:
+        try:
+            values = json.loads(GRIPPER_CONFIG_PATH.read_text(encoding="utf-8"))
+            config = ContactConfig.from_dict(values)
+        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            self.get_logger().error(
+                f"Gripper contact detection disabled: invalid config: {exc}"
+            )
+            config = ContactConfig(
+                enabled=False,
+                closing_direction=1,
+                minimum_load_raw=1,
+                minimum_current_raw=1,
+                minimum_position_error_ticks=1,
+                empty_closed_position_ticks=0,
+                minimum_object_gap_ticks=1,
+                confirmation_samples=1,
+            )
+        if not config.enabled:
+            self.get_logger().warning(
+                "Gripper contact detection is disabled pending hardware calibration"
+            )
+        return GripperContactDetector(config)
 
     def _verify_servos(self) -> None:
         found = []
@@ -103,6 +151,64 @@ class SoArmBridge(Node):
             self.state_pub.publish(Int16MultiArray(data=positions))
         except Exception as exc:
             self.get_logger().error(f"State read failed: {exc}")
+
+    def _read_gripper_feedback(self) -> dict[str, int]:
+        position, _, result, error = self.packet.ReadPosSpeed(GRIPPER_ID)
+        if result != COMM_SUCCESS or error != 0:
+            raise RuntimeError(
+                f"Gripper position read failed (result={result}, error={error})"
+            )
+        load_encoded, result, error = self.packet.read2ByteTxRx(
+            GRIPPER_ID, STS_PRESENT_LOAD_L
+        )
+        if result != COMM_SUCCESS or error != 0:
+            raise RuntimeError(f"Gripper load read failed (result={result}, error={error})")
+        current_raw, result, error = self.packet.read2ByteTxRx(
+            GRIPPER_ID, STS_PRESENT_CURRENT_L
+        )
+        if result != COMM_SUCCESS or error != 0:
+            raise RuntimeError(
+                f"Gripper current read failed (result={result}, error={error})"
+            )
+        moving, result, error = self.packet.read1ByteTxRx(GRIPPER_ID, STS_MOVING)
+        if result != COMM_SUCCESS or error != 0:
+            raise RuntimeError(f"Gripper moving read failed (result={result}, error={error})")
+        return {
+            "position_ticks": position,
+            "target_ticks": self.targets[-1],
+            # STS load is sign-magnitude with bit 10 as its direction bit.
+            "load_raw": self.packet.sts_tohost(load_encoded, 10),
+            # Keep current in device-native units until the exact installed
+            # servo model and its scale have been verified.
+            "current_raw": current_raw,
+            "moving": int(moving),
+        }
+
+    def publish_gripper_feedback(self) -> None:
+        """Publish passive feedback and an evidence-based contact state."""
+        try:
+            with self.lock:
+                feedback = self._read_gripper_feedback()
+            state = self.contact_detector.observe(
+                position_ticks=feedback["position_ticks"],
+                target_ticks=feedback["target_ticks"],
+                load_raw=feedback["load_raw"],
+                current_raw=feedback["current_raw"],
+            )
+            feedback["position_error_ticks"] = abs(
+                feedback["target_ticks"] - feedback["position_ticks"]
+            )
+            feedback["object_gap_ticks"] = (
+                self.contact_detector.config.empty_closed_position_ticks
+                - feedback["position_ticks"]
+            ) * self.contact_detector.config.closing_direction
+            feedback["contact_state"] = state.value
+            self.gripper_telemetry_pub.publish(
+                String(data=json.dumps(feedback, separators=(",", ":")))
+            )
+            self.gripper_contact_pub.publish(String(data=state.value))
+        except Exception as exc:
+            self.get_logger().error(f"Gripper feedback read failed: {exc}")
 
     def hold_current_positions(self) -> None:
         """Cancel any remaining position trajectory by targeting each live position."""
@@ -177,6 +283,10 @@ class SoArmBridge(Node):
                             f"(result={result}, error={error})"
                         )
                 self.targets = targets
+            # Track explicit operator intent even if the gripper is already at
+            # a travel limit. An opening request must always clear a latched
+            # contact state.
+            self.contact_detector.command(requested[-1])
             self.motion_active = True
             self.last_motion_command_s = time.monotonic()
             self.get_logger().info(f"Applied capped delta {requested}; targets {targets}")
