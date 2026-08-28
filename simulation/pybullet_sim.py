@@ -308,12 +308,132 @@ def write_workspace_ply(path: Path, points: list[tuple[float, float, float]]) ->
             output.write(f"{x:.6f} {y:.6f} {z:.6f} 35 190 75\n")
 
 
-def show_workspace(points: list[tuple[float, float, float]]) -> None:
-    """Add a green point cloud and axes to an already-open PyBullet GUI."""
-    # PyBullet debug rendering is responsive with a few thousand points; keep
-    # the full-resolution cloud in the PLY export.
-    display_points = points[::max(1, len(points) // 4000)]
-    pb.addUserDebugPoints(display_points, [[0.14, 0.75, 0.3]] * len(display_points), pointSize=3)
+def workspace_envelope_voxels(
+    points: list[tuple[float, float, float]], voxel_size_m: float
+) -> set[tuple[int, int, int]]:
+    """Create a readable, lightly filled voxel envelope from a sampled cloud."""
+    occupied = {
+        tuple(round(value / voxel_size_m) for value in point)
+        for point in points
+    }
+    # A one-voxel axial dilation joins neighbouring samples into an envelope
+    # without pretending that unbounded space is reachable.
+    neighbours = ((0, 0, 0), (1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
+                  (0, 0, 1), (0, 0, -1))
+    return {
+        (x + dx, y + dy, z + dz)
+        for x, y, z in occupied
+        for dx, dy, dz in neighbours
+    }
+
+
+def height_colour(z: float, z_min: float, z_max: float) -> tuple[float, float, float, float]:
+    """Map low-to-high workspace height to blue, cyan, yellow, then red."""
+    fraction = 0.5 if z_max == z_min else (z - z_min) / (z_max - z_min)
+    fraction = max(0.0, min(1.0, fraction))
+    palette = ((0.10, 0.20, 0.90), (0.00, 0.75, 0.85), (0.95, 0.85, 0.05), (0.90, 0.10, 0.05))
+    scaled = fraction * (len(palette) - 1)
+    index = min(int(scaled), len(palette) - 2)
+    blend = scaled - index
+    first, second = palette[index], palette[index + 1]
+    return tuple(first[channel] + blend * (second[channel] - first[channel]) for channel in range(3)) + (0.72,)
+
+
+def add_envelope_mesh(voxels: set[tuple[int, int, int]], voxel_size_m: float) -> None:
+    """Render only exposed voxel faces, grouped into height-coloured meshes."""
+    if not voxels:
+        return
+    faces = (
+        ((1, 0, 0), ((1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1))),
+        ((-1, 0, 0), ((0, 0, 0), (0, 0, 1), (0, 1, 1), (0, 1, 0))),
+        ((0, 1, 0), ((0, 1, 0), (0, 1, 1), (1, 1, 1), (1, 1, 0))),
+        ((0, -1, 0), ((0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1))),
+        ((0, 0, 1), ((0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1))),
+        ((0, 0, -1), ((0, 0, 0), (0, 1, 0), (1, 1, 0), (1, 0, 0))),
+    )
+    z_min, z_max = min(key[2] for key in voxels), max(key[2] for key in voxels)
+    bands: list[tuple[list[tuple[float, float, float]], list[int]]] = [([], []) for _ in range(8)]
+    for x, y, z in voxels:
+        band = min(7, int(8 * (z - z_min) / max(1, z_max - z_min)))
+        vertices, indices = bands[band]
+        for neighbour, corners in faces:
+            if (x + neighbour[0], y + neighbour[1], z + neighbour[2]) in voxels:
+                continue
+            base = len(vertices)
+            vertices.extend(
+                tuple((coordinate + offset) * voxel_size_m for coordinate, offset in zip((x, y, z), corner))
+                for corner in corners
+            )
+            indices.extend((base, base + 1, base + 2, base, base + 2, base + 3))
+    for band, (vertices, indices) in enumerate(bands):
+        if not vertices:
+            continue
+        z = (z_min + (band + 0.5) * (z_max - z_min + 1) / 8) * voxel_size_m
+        visual = pb.createVisualShape(
+            pb.GEOM_MESH, vertices=vertices, indices=indices,
+            rgbaColor=height_colour(z, z_min * voxel_size_m, z_max * voxel_size_m),
+        )
+        pb.createMultiBody(baseMass=0, baseVisualShapeIndex=visual)
+
+
+def add_envelope_contours(voxels: set[tuple[int, int, int]], voxel_size_m: float) -> None:
+    """Render thin horizontal contour bands so the robot stays visible."""
+    if not voxels:
+        return
+    z_min, z_max = min(key[2] for key in voxels), max(key[2] for key in voxels)
+    visuals = []
+    for band in range(8):
+        z = (z_min + (band + 0.5) * (z_max - z_min + 1) / 8) * voxel_size_m
+        visuals.append(pb.createVisualShape(
+            pb.GEOM_BOX,
+            halfExtents=(voxel_size_m * 0.48, voxel_size_m * 0.48, 0.0025),
+            rgbaColor=height_colour(z, z_min * voxel_size_m, z_max * voxel_size_m),
+        ))
+    for x, y, z in voxels:
+        # A 2-D boundary at each height creates readable contour rings rather
+        # than an opaque solid that hides the robot inside it.
+        if all((x + dx, y + dy, z) in voxels for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue
+        band = min(7, int(8 * (z - z_min) / max(1, z_max - z_min)))
+        pb.createMultiBody(
+            baseMass=0, baseVisualShapeIndex=visuals[band],
+            basePosition=(x * voxel_size_m, y * voxel_size_m, z * voxel_size_m),
+        )
+
+
+def add_workspace_slice(
+    points: list[tuple[float, float, float]], slice_z_m: float, voxel_size_m: float
+) -> int:
+    """Render a thin orange floor slice through the reachable cloud."""
+    cells = {
+        (round(x / voxel_size_m), round(y / voxel_size_m))
+        for x, y, z in points
+        if abs(z - slice_z_m) <= voxel_size_m
+    }
+    visual = pb.createVisualShape(
+        pb.GEOM_BOX, halfExtents=(voxel_size_m * 0.46, voxel_size_m * 0.46, 0.002),
+        rgbaColor=(1.0, 0.45, 0.0, 0.92),
+    )
+    for x, y in cells:
+        pb.createMultiBody(baseMass=0, baseVisualShapeIndex=visual,
+                           basePosition=(x * voxel_size_m, y * voxel_size_m, slice_z_m))
+    return len(cells)
+
+
+def show_workspace(
+    points: list[tuple[float, float, float]],
+    envelope_voxel_m: float,
+    slice_z_m: float | None,
+) -> None:
+    """Render a height-coloured workspace envelope and optional platform slice."""
+    envelope = workspace_envelope_voxels(points, envelope_voxel_m)
+    add_envelope_contours(envelope, envelope_voxel_m)
+    if slice_z_m is not None:
+        slice_cells = add_workspace_slice(points, slice_z_m, envelope_voxel_m)
+        pb.addUserDebugText(
+            f"workspace slice z={slice_z_m:.3f} m ({slice_cells} cells)",
+            (0.0, 0.0, slice_z_m + 0.03), textColorRGB=(1, 0.35, 0), textSize=1.3,
+        )
     for axis, endpoint, colour in (
         ("+x forward", (0.30, 0.0, 0.0), (1, 0, 0)),
         ("+y left", (0.0, 0.30, 0.0), (0, 1, 0)),
@@ -395,6 +515,17 @@ def main() -> None:
         help="Voxel size used to deduplicate workspace points with --workspace",
     )
     parser.add_argument(
+        "--workspace-envelope-voxel-m",
+        type=float,
+        default=0.03,
+        help="Coarser voxel size used for the readable workspace envelope in the GUI",
+    )
+    parser.add_argument(
+        "--workspace-slice-z-m",
+        type=float,
+        help="Optional measured platform height for an orange reachable-area slice",
+    )
+    parser.add_argument(
         "--workspace-output",
         type=Path,
         default=Path("data/reachability/urdf_workspace.ply"),
@@ -443,8 +574,10 @@ def main() -> None:
             print(json.dumps(summary, indent=2, sort_keys=True))
             print(f"wrote {len(points)} workspace points to {args.workspace_output}")
             if args.gui:
-                show_workspace(points)
-                print("Green points are kinematically reachable gripper centres; close the GUI to exit.")
+                show_workspace(
+                    points, args.workspace_envelope_voxel_m, args.workspace_slice_z_m
+                )
+                print("Height-coloured surface is the kinematic workspace envelope; close the GUI to exit.")
                 started = time.monotonic()
                 while time.monotonic() - started < args.seconds:
                     pb.stepSimulation()
