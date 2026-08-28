@@ -9,6 +9,7 @@ LiDAR frame. The emitted scan data can later be connected to a ROS adapter.
 from __future__ import annotations
 
 import argparse
+import json
 import math
 import os
 import random
@@ -30,6 +31,14 @@ LIDAR_RANGE_M = 8.0
 LIDAR_NOISE_STD_M = 0.01
 WHEEL_NOISE_FRACTION = 0.02
 WHEEL_SCALE_ERROR = 0.01
+WORKSPACE_JOINT_NAMES = (
+    "shoulder_yaw_joint",
+    "shoulder_pitch_joint",
+    "elbow_joint",
+    "wrist_pitch_joint",
+    "wrist_roll_joint",
+    "gripper_joint",
+)
 WORLD_WALLS = [
     ((2.5, 0.0), (0.10, 5.0)),
     ((-2.5, 0.0), (0.10, 5.0)),
@@ -199,6 +208,122 @@ def find_link(robot: int, name: str) -> int:
     raise RuntimeError(f"URDF link not found: {name}")
 
 
+def joint_indices(robot: int, names: tuple[str, ...] = WORKSPACE_JOINT_NAMES) -> list[int]:
+    """Find the calibrated URDF joints that determine the gripper position."""
+    indices = {}
+    for index in range(pb.getNumJoints(robot)):
+        info = pb.getJointInfo(robot, index)
+        indices[info[1].decode()] = index
+    missing = [name for name in names if name not in indices]
+    if missing:
+        raise RuntimeError(f"URDF workspace joints not found: {', '.join(missing)}")
+    return [indices[name] for name in names]
+
+
+def halton(index: int, base: int) -> float:
+    """Return a deterministic low-discrepancy value in [0, 1)."""
+    result, fraction = 0.0, 1.0
+    while index:
+        fraction /= base
+        result += fraction * (index % base)
+        index //= base
+    return result
+
+
+def gripper_centre(robot: int, gripper_link: int) -> tuple[float, float, float]:
+    """Return the centre of the gripper visual volume in base_footprint.
+
+    The v6 URDF places the gripper box centre at x=0.050 m in its link frame.
+    Keeping that offset explicit means the workspace cloud describes the useful
+    gripper volume, rather than only the gripper-joint origin.
+    """
+    state = pb.getLinkState(robot, gripper_link, computeForwardKinematics=True)
+    return tuple(pb.multiplyTransforms(state[4], state[5], (0.050, 0.0, 0.0), (0, 0, 0, 1))[0])
+
+
+def workspace_samples(
+    robot: int,
+    sample_count: int,
+    voxel_size_m: float,
+) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
+    """Sample URDF joint limits and return deduplicated gripper-centre points.
+
+    This is a kinematic workspace estimate.  The v6 arm links do not all have
+    collision geometry, so this function intentionally does not label points
+    collision-free or physically verified.
+    """
+    if sample_count < 1:
+        raise ValueError("workspace sample count must be positive")
+    if voxel_size_m <= 0:
+        raise ValueError("workspace voxel size must be positive")
+    indices = joint_indices(robot)
+    limits = [(pb.getJointInfo(robot, index)[8], pb.getJointInfo(robot, index)[9]) for index in indices]
+    if any(lower >= upper for lower, upper in limits):
+        raise RuntimeError("all workspace joints need finite lower and upper URDF limits")
+    gripper_link = find_link(robot, "gripper")
+    bases = (2, 3, 5, 7, 11, 13)
+    voxels: dict[tuple[int, int, int], tuple[float, float, float]] = {}
+    for sample_index in range(1, sample_count + 1):
+        values = [lower + (upper - lower) * halton(sample_index, base)
+                  for (lower, upper), base in zip(limits, bases)]
+        for joint_index, value in zip(indices, values):
+            pb.resetJointState(robot, joint_index, value)
+        point = gripper_centre(robot, gripper_link)
+        key = tuple(round(value / voxel_size_m) for value in point)
+        voxels.setdefault(key, point)
+    points = list(voxels.values())
+    bounds = {
+        "x_min_m": min(point[0] for point in points),
+        "x_max_m": max(point[0] for point in points),
+        "y_min_m": min(point[1] for point in points),
+        "y_max_m": max(point[1] for point in points),
+        "z_min_m": min(point[2] for point in points),
+        "z_max_m": max(point[2] for point in points),
+    }
+    return points, {
+        "frame_id": "base_footprint",
+        "kind": "kinematic_reachable_workspace_estimate",
+        "source": "URDF geometry and joint limits",
+        "sampled_configurations": sample_count,
+        "voxel_size_m": voxel_size_m,
+        "unique_voxels": len(points),
+        "bounds_m": bounds,
+        "joint_limits_rad": dict(zip(WORKSPACE_JOINT_NAMES, limits)),
+        "limitations": [
+            "No physical validation is implied.",
+            "No self/platform/cable collision filtering is implied unless the URDF contains that collision geometry.",
+        ],
+    }
+
+
+def write_workspace_ply(path: Path, points: list[tuple[float, float, float]]) -> None:
+    """Write a portable point cloud that can be opened in MeshLab or CloudCompare."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as output:
+        output.write("ply\nformat ascii 1.0\n")
+        output.write(f"element vertex {len(points)}\n")
+        output.write("property float x\nproperty float y\nproperty float z\n")
+        output.write("property uchar red\nproperty uchar green\nproperty uchar blue\nend_header\n")
+        for x, y, z in points:
+            output.write(f"{x:.6f} {y:.6f} {z:.6f} 35 190 75\n")
+
+
+def show_workspace(points: list[tuple[float, float, float]]) -> None:
+    """Add a green point cloud and axes to an already-open PyBullet GUI."""
+    # PyBullet debug rendering is responsive with a few thousand points; keep
+    # the full-resolution cloud in the PLY export.
+    display_points = points[::max(1, len(points) // 4000)]
+    pb.addUserDebugPoints(display_points, [[0.14, 0.75, 0.3]] * len(display_points), pointSize=3)
+    for axis, endpoint, colour in (
+        ("+x forward", (0.30, 0.0, 0.0), (1, 0, 0)),
+        ("+y left", (0.0, 0.30, 0.0), (0, 1, 0)),
+        ("+z up", (0.0, 0.0, 0.30), (0, 0, 1)),
+    ):
+        pb.addUserDebugLine((0, 0, 0), endpoint, lineColorRGB=colour, lineWidth=3)
+        pb.addUserDebugText(axis, endpoint, textColorRGB=colour, textSize=1.2)
+    pb.resetDebugVisualizerCamera(1.4, 45, -24, (0.0, 0.0, 0.30))
+
+
 def scan(robot: int, lidar_link: int, pose: tuple[float, float, float]) -> list[float]:
     state = pb.getLinkState(robot, lidar_link, computeForwardKinematics=True)
     origin = state[4]
@@ -252,6 +377,29 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--urdf", type=Path, default=Path(os.environ.get("ROBOT_URDF", DEFAULT_URDF)))
     parser.add_argument("--gui", action="store_true", help="Open the PyBullet window")
+    parser.add_argument(
+        "--workspace",
+        action="store_true",
+        help="Sample calibrated URDF joint limits and visualise the kinematic gripper workspace",
+    )
+    parser.add_argument(
+        "--workspace-samples",
+        type=int,
+        default=12000,
+        help="Number of deterministic joint configurations to sample with --workspace",
+    )
+    parser.add_argument(
+        "--workspace-voxel-m",
+        type=float,
+        default=0.01,
+        help="Voxel size used to deduplicate workspace points with --workspace",
+    )
+    parser.add_argument(
+        "--workspace-output",
+        type=Path,
+        default=Path("data/reachability/urdf_workspace.ply"),
+        help="PLY point-cloud output path for --workspace",
+    )
     parser.add_argument("--2d-gui", dest="view_2d_gui", action="store_true",
                         help="Open a realtime PyBullet top-down 2D-like view")
     parser.add_argument("--2d-live", dest="view_2d_live", action="store_true",
@@ -283,6 +431,25 @@ def main() -> None:
     client = pb.connect(pb.GUI if args.gui or use_2d_gui else pb.DIRECT)
     try:
         pb.setAdditionalSearchPath(pybullet_data.getDataPath())
+        if args.workspace:
+            # Fixed base keeps all output coordinates in the URDF's
+            # base_footprint frame rather than a moving simulation world frame.
+            robot = pb.loadURDF(str(args.urdf), useFixedBase=True,
+                                flags=pb.URDF_USE_INERTIA_FROM_FILE)
+            points, summary = workspace_samples(
+                robot, args.workspace_samples, args.workspace_voxel_m
+            )
+            write_workspace_ply(args.workspace_output, points)
+            print(json.dumps(summary, indent=2, sort_keys=True))
+            print(f"wrote {len(points)} workspace points to {args.workspace_output}")
+            if args.gui:
+                show_workspace(points)
+                print("Green points are kinematically reachable gripper centres; close the GUI to exit.")
+                started = time.monotonic()
+                while time.monotonic() - started < args.seconds:
+                    pb.stepSimulation()
+                    time.sleep(1.0 / 60.0)
+            return
         pb.setGravity(0, 0, -9.81)
         pb.loadURDF("plane.urdf")
         make_test_world()

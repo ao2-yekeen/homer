@@ -1,16 +1,27 @@
 # Characterising the reachable workspace
 
-This is the HOM-8 procedure. It records what the *physical* arm can reach
-around the raised test platform; it does not derive a workspace from the URDF
-or servo EEPROM limits.
+This is the HOM-8 procedure. The primary workspace is generated from the
+calibrated URDF geometry and calibrated joint limits, then viewed around the
+robot in PyBullet. Physical observations are retained only to validate a
+specific boundary or an unmodelled clearance risk.
+
+Generate and view the model-derived point cloud:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
+```
+
+The green cloud contains gripper-centre positions in `base_footprint`. It is
+also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
+3D view outside PyBullet.
 
 ## Reference frame
 
 Use `base_footprint`: its origin is the floor projection of the robot base
 reference point; +x is forward, +y is robot left, and +z is upward. Measure in
 metres. Mark the origin and +x direction on the floor before recording points.
-The URDF's 0.400 m arm-mount height is only an approximate setup cross-check;
-measure the physical robot and enter platform values in
+Use the calibrated URDF frame and joint limits as the workspace source. Enter
+the physically measured platform position and usable target zone in
 [`config/reachable_workspace.yaml`](../../config/reachable_workspace.yaml).
 
 ## Safe measurement procedure
@@ -19,17 +30,19 @@ measure the physical robot and enter platform values in
 platform, support the arm, set conservative speed, and keep an emergency power
 disconnect accessible. Do not attempt floor points or maximum extension.
 
-1. With motion inhibited, confirm the frame marks, platform height, and usable
+1. Generate the URDF workspace cloud and inspect its overlap with the intended
+   raised-platform zone. Do not use it as an automatic motion command.
+2. With motion inhibited, confirm the frame marks, platform height, and usable
    platform x/y bounds. Enter those measured values in the config.
-2. Enable only the existing manual, dead-man-controlled arm jog path. Move one
+3. Enable only the existing manual, dead-man-controlled arm jog path. Move one
    joint at a time and stop immediately if there is any mast, base, camera,
    platform, self-collision, or cable-clearance concern.
-3. At representative front/left/right and near/far platform points, measure
-   the gripper-centre XYZ. Record both safe reachable points and boundary or
-   unreachable points. An unreachable sample must say why.
-4. Capture the displayed `/soarm/state_ticks` values when available. It is
+4. Test only selected cloud-boundary points or points near the platform. Record
+   disagreement or any unmodelled clearance restriction; an unreachable sample
+   must say why.
+5. Capture the displayed `/soarm/state_ticks` values when available. It is
    evidence only, not a command to replay.
-5. Return to a known safe position between samples. Do not automate movement
+6. Return to a known safe position between samples. Do not automate movement
    from the resulting records.
 
 The recorder only appends an observation; it sends no ROS message and opens no
@@ -51,7 +64,7 @@ intentionally not committed because it is robot-specific experimental data.
 
 ## Completion evidence
 
-HOM-8 is complete only when the config has a physically aligned frame and
-measured platform height/zone, and the sample log contains representative safe
-reachable and unreachable XYZ observations with evidence. Review the samples
-before using any region for grasp planning.
+HOM-8 is complete when the calibrated-URDF point cloud has been generated and
+reviewed against the physically aligned platform height/zone. Record any
+boundary validation observations and discrepancies before using a region for
+grasp planning.
