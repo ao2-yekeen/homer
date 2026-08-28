@@ -92,6 +92,7 @@ on the robot with motion inhibited before attempting a lifted-wheel test.
 ## Documentation map
 
 - [Gamepad controls and safety checks](docs/gamepad-control-map.md)
+- [Reachable-workspace characterisation](docs/calibration/reachable-workspace.md)
 - [Raspberry Pi runtime](pi/README.md)
 - [Gamepad coordinator](pi/robot_teleop/README.md)
 - [Simulation](simulation/README.md)
