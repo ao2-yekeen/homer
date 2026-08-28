@@ -1,7 +1,8 @@
 # HOM-8 workspace-characterisation record.
 #
-# Values in this file must come from the physical robot.  The URDF values are
-# listed only as a setup aid and are not a calibrated workspace model.
+# The calibrated URDF geometry and calibrated joint limits are the source for
+# the kinematic workspace cloud. Values below describe the physically placed
+# raised platform, which is not currently part of the URDF.
 schema_version: 1
 frame:
   frame_id: base_footprint
@@ -13,7 +14,7 @@ frame:
   nominal_arm_mount_xyz_m: [0.0, 0.0, 0.4]
   nominal_arm_mount_source: >-
     simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf;
-    approximate only, not a physical measurement.
+    calibrated workspace model.
 
 platform:
   height_m: null  # Measure from the same floor datum.
@@ -24,6 +25,7 @@ platform:
     y_max_m: null
   status: REQUIRES_HARDWARE_TEST
 
-# Add observations with `pi/soarm_workspace_record.py`. Do not infer a
-# reachable volume from joint limits or the nominal URDF alone.
+# Generate `data/reachability/urdf_workspace.ply` with:
+# `python3 simulation/pybullet_sim.py --workspace --gui`.
+# Add physical discrepancy observations with `pi/soarm_workspace_record.py`.
 samples: []

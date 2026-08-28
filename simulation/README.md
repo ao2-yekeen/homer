@@ -23,6 +23,33 @@ To inspect the model in 3D:
 python3 simulation/pybullet_sim.py --gui --seconds 60
 ```
 
+## Visualise the calibrated arm workspace
+
+The URDF joint limits are the calibrated limits for this robot. Generate a
+dense, repeatable kinematic workspace estimate and view it around the 3D robot
+model with:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
+```
+
+Green points are gripper-centre positions in `base_footprint` that result from
+sampling the allowed arm joint configurations. The command also writes a PLY
+point cloud to `data/reachability/urdf_workspace.ply`; open it in MeshLab or
+CloudCompare if a standalone view is useful.
+
+For a finer cloud, increase the samples and reduce voxel size:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --gui \
+  --workspace-samples 50000 --workspace-voxel-m 0.005 --seconds 90
+```
+
+This is a model-derived *kinematic* workspace. It does not claim platform,
+cable, or self-collision clearance where that collision geometry is absent
+from the URDF. Add such geometry before using the cloud as an automatic motion
+or collision decision.
+
 For the low-resource top-down view (robot path and simulated LiDAR points):
 
 ```bash
