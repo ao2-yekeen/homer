@@ -33,10 +33,19 @@ model with:
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
 ```
 
-Green points are gripper-centre positions in `base_footprint` that result from
-sampling the allowed arm joint configurations. The command also writes a PLY
-point cloud to `data/reachability/urdf_workspace.ply`; open it in MeshLab or
-CloudCompare if a standalone view is useful.
+The GUI renders a clean outer envelope rather than the raw dots: blue is low,
+then cyan, yellow, and red at the highest reachable positions. The command
+also writes the underlying gripper-centre point cloud to
+`data/reachability/urdf_workspace.ply`; open it in MeshLab or CloudCompare if
+a standalone view is useful.
+
+When the raised platform height is measured in `base_footprint`, add an orange
+horizontal slice through the reachable region at that exact height:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --gui \
+  --workspace-slice-z-m MEASURED_PLATFORM_HEIGHT_METRES --seconds 60
+```
 
 For a finer cloud, increase the samples and reduce voxel size:
 
