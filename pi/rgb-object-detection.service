@@ -1,0 +1,13 @@
+[Unit]
+Description=Homer RGB camera stream and simple coloured-object detector
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mobile-robot
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/rgb_object_detection.py'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

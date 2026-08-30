@@ -30,6 +30,42 @@ labelled **B** button for 1.5 seconds to return to Autonomous. There is no
 | Hold **LT** + **LB** / **RB** | Lower / raise neck, limited to 80--150 degrees |
 
 LT is the arm dead-man: releasing it immediately stops arm and neck commands.
+
+## RGB camera and first-object detection
+
+`rgb_object_detection.py` publishes the Logitech C930e stream as
+`/rgb_camera/image_raw` and publishes a compact JSON result on
+`/rgb_camera/detection`. It is deliberately independent of the unavailable ToF
+camera. The first detector identifies the largest saturated **yellow** region
+on the raised platform, reporting `detected`, `confidence`, `bbox_xywh`, and
+`center_uv`; it is not a general object detector.
+
+Install and start it on the Pi after this repository has been deployed at
+`~/mobile-robot`:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp pi/rgb-object-detection.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now rgb-object-detection.service
+source /opt/ros/jazzy/setup.bash
+ros2 topic echo /rgb_camera/detection
+```
+
+The camera identity is the Logitech C930e's stable `/dev/v4l/by-id/...index0`
+path; do not substitute an arbitrary `/dev/videoN`. Confirm stream and target
+colour under the actual platform lighting before relying on its output.
+
+To test one camera tilt position, with the arm clear and emergency stop
+available, issue an explicit bounded command:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 pi/camera_tilt.py --angle 100
+```
+
+`REQUIRES_HARDWARE_TEST`: record the tested tilt angle, platform visibility,
+and any camera/arm/cable clearance limit before treating a named view as safe.
 The ESP32 also stops the base if its active command stream is stale for one
 second. The gamepad uses the standard Xbox-labelled layout; check each joint's
 direction in a clear workspace before normal use because a motor's installed
