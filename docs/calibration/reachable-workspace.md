@@ -1,9 +1,10 @@
 # Characterising the reachable workspace
 
-This is the HOM-8 procedure. The primary workspace is generated from the
-calibrated URDF geometry and calibrated joint limits, then viewed around the
-robot in PyBullet. Physical observations are retained only to validate a
-specific boundary or an unmodelled clearance risk.
+This is the HOM-8 procedure. The primary workspace is generated from the URDF
+geometry and joint limits, then limited to the front of the robot and filtered
+against the modelled mast/base/arm-mount/neck collision volumes. Physical
+observations are retained to validate a boundary, the servo-to-URDF alignment,
+or an unmodelled clearance risk.
 
 Generate and view the model-derived point cloud:
 
@@ -20,7 +21,9 @@ also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
 Use `base_footprint`: its origin is the floor projection of the robot base
 reference point; +x is forward, +y is robot left, and +z is upward. Measure in
 metres. Mark the origin and +x direction on the floor before recording points.
-Use the calibrated URDF frame and joint limits as the workspace source. Enter
+Use the URDF frame and joint limits as the preliminary workspace source. The
+current EEPROM tick limits are not yet aligned with URDF radians, so this is
+not a replacement for a physical safety boundary. Enter
 the physically measured platform position and usable target zone in
 [`config/reachable_workspace.yaml`](../../config/reachable_workspace.yaml).
 
