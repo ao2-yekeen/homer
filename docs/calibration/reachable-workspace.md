@@ -26,9 +26,13 @@ distance, and target. Standard PyBullet mouse controls remain available.
 Use `base_footprint`: its origin is the floor projection of the robot base
 reference point; +x is forward, +y is robot left, and +z is upward. Measure in
 metres. Mark the origin and +x direction on the floor before recording points.
-Use the URDF frame and joint limits as the preliminary workspace source. The
-current EEPROM tick limits are not yet aligned with URDF radians, so this is
-not a replacement for a physical safety boundary. Enter
+Use the URDF frame and installed SO-ARM EEPROM calibration as the workspace
+source. The default command converts the calibrated tick range of each SO-ARM
+joint to radians, then intersects it with the URDF limits. The exact
+calibration is versioned in
+[`config/soarm_servo_calibration.json`](../../config/soarm_servo_calibration.json).
+Use `--workspace-urdf-limits-only` only to inspect the older unrestricted model.
+This is still not a replacement for a physical safety boundary. Enter
 the physically measured platform position and usable target zone in
 [`config/reachable_workspace.yaml`](../../config/reachable_workspace.yaml).
 

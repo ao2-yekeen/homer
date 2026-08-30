@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "source": "SO-ARM follower EEPROM read on 2026-08-30",
+  "tick_resolution": 4096,
+  "zero_tick": 2047.5,
+  "joints": {
+    "shoulder_yaw_joint": {"servo_name": "shoulder_pan", "servo_id": 1, "homing_offset_ticks": 1008, "direction": 1, "min_tick": 730, "max_tick": 3444},
+    "shoulder_pitch_joint": {"servo_name": "shoulder_lift", "servo_id": 2, "homing_offset_ticks": -213, "direction": -1, "min_tick": 1450, "max_tick": 2446},
+    "elbow_joint": {"servo_name": "elbow_flex", "servo_id": 3, "homing_offset_ticks": -1067, "direction": 1, "min_tick": 890, "max_tick": 2506},
+    "wrist_pitch_joint": {"servo_name": "wrist_flex", "servo_id": 4, "homing_offset_ticks": 2007, "direction": 1, "min_tick": 2315, "max_tick": 3233},
+    "wrist_roll_joint": {"servo_name": "wrist_roll", "servo_id": 5, "homing_offset_ticks": -1912, "direction": 1, "min_tick": 0, "max_tick": 4095},
+    "gripper_joint": {"servo_name": "gripper", "servo_id": 6, "homing_offset_ticks": -1819, "direction": 1, "min_tick": 2034, "max_tick": 3504}
+  }
+}

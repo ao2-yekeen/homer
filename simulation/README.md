@@ -62,12 +62,12 @@ python3 simulation/pybullet_sim.py --workspace --gui \
   --workspace-samples 50000 --workspace-voxel-m 0.005 --seconds 90
 ```
 
-The default output excludes gripper-centre points behind
-`base_footprint`'s `x=0` plane and configurations contacting the modelled mast,
-base, arm mount, or neck. It remains a model-derived estimate: platform and
-cable clearance are not represented, and physical servo EEPROM ticks have not
-yet been calibrated to the URDF joint-angle references. Do not use the cloud
-as an automatic motion command or proof of safe motion.
+The default output applies the installed SO-ARM EEPROM ranges to the URDF,
+excludes gripper-centre points behind `base_footprint`'s `x=0` plane, and
+rejects configurations contacting the modelled mast, base, arm mount, or neck.
+It remains a model-derived estimate: platform and cable clearance are not
+represented. Do not use the cloud as an automatic motion command or proof of
+safe motion.
 
 For the low-resource top-down view (robot path and simulated LiDAR points):
 

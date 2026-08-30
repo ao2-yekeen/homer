@@ -24,6 +24,7 @@ URDF_NAME = "home_mobile_manipulator_v6_real_base_layout.urdf"
 PROJECT_URDF = Path(__file__).with_name("urdf") / URDF_NAME
 DOWNLOAD_URDF = Path("/mnt/c/Users/abdul/Downloads") / URDF_NAME
 DEFAULT_URDF = PROJECT_URDF if PROJECT_URDF.exists() else DOWNLOAD_URDF
+SOARM_CALIBRATION = Path(__file__).parents[1] / "config" / "soarm_servo_calibration.json"
 WHEEL_RADIUS_M = 0.0325
 TRACK_WIDTH_M = 0.230
 LIDAR_RAYS = 360
@@ -271,11 +272,34 @@ def collides_with_workspace_obstacle(robot: int, obstacle_links: set[int]) -> bo
     return False
 
 
+def load_soarm_joint_limits(path: Path = SOARM_CALIBRATION) -> dict[str, tuple[float, float]]:
+    """Return URDF-radian limits derived from the installed SO-ARM EEPROM."""
+    values = json.loads(path.read_text(encoding="utf-8"))
+    resolution = int(values["tick_resolution"])
+    zero_tick = float(values["zero_tick"])
+    if resolution <= 0:
+        raise ValueError("SO-ARM tick resolution must be positive")
+    limits = {}
+    for name in WORKSPACE_JOINT_NAMES:
+        joint = values["joints"][name]
+        direction = int(joint["direction"])
+        if direction not in (-1, 1):
+            raise ValueError(f"SO-ARM direction for {name} must be -1 or 1")
+        minimum, maximum = int(joint["min_tick"]), int(joint["max_tick"])
+        if not 0 <= minimum < maximum < resolution:
+            raise ValueError(f"invalid EEPROM range for {name}: {minimum}–{maximum}")
+        radians = tuple(direction * (tick - zero_tick) * (2.0 * math.pi / resolution)
+                        for tick in (minimum, maximum))
+        limits[name] = (min(radians), max(radians))
+    return limits
+
+
 def workspace_samples(
     robot: int,
     sample_count: int,
     voxel_size_m: float,
     front_min_x_m: float = 0.0,
+    joint_limit_overrides: dict[str, tuple[float, float]] | None = None,
 ) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
     """Sample safe front-of-robot URDF configurations and return gripper points.
 
@@ -287,7 +311,11 @@ def workspace_samples(
     if voxel_size_m <= 0:
         raise ValueError("workspace voxel size must be positive")
     indices = joint_indices(robot)
-    limits = [(pb.getJointInfo(robot, index)[8], pb.getJointInfo(robot, index)[9]) for index in indices]
+    urdf_limits = [(pb.getJointInfo(robot, index)[8], pb.getJointInfo(robot, index)[9]) for index in indices]
+    limits = []
+    for name, (urdf_lower, urdf_upper) in zip(WORKSPACE_JOINT_NAMES, urdf_limits):
+        lower, upper = (joint_limit_overrides or {}).get(name, (urdf_lower, urdf_upper))
+        limits.append((max(lower, urdf_lower), min(upper, urdf_upper)))
     if any(lower >= upper for lower, upper in limits):
         raise RuntimeError("all workspace joints need finite lower and upper URDF limits")
     gripper_link = find_link(robot, "gripper")
@@ -324,7 +352,7 @@ def workspace_samples(
     return points, {
         "frame_id": "base_footprint",
         "kind": "collision-filtered_front_workspace_estimate",
-        "source": "URDF geometry, joint limits, and modelled collision volumes",
+        "source": "URDF geometry, applied joint limits, and modelled collision volumes",
         "sampled_configurations": sample_count,
         "accepted_configurations": sample_count - rejected_behind - rejected_collision,
         "rejected_behind_robot": rejected_behind,
@@ -336,7 +364,7 @@ def workspace_samples(
         "joint_limits_rad": dict(zip(WORKSPACE_JOINT_NAMES, limits)),
         "limitations": [
             "No physical validation is implied.",
-            "Servo EEPROM ticks have not yet been calibrated to URDF joint angles.",
+            "The EEPROM conversion assumes the SO-ARM calibrated centre is the URDF zero reference.",
             "Platform, cable, and any unmodelled collision volumes are not filtered.",
         ],
     }
@@ -577,7 +605,12 @@ def main() -> None:
     parser.add_argument(
         "--workspace",
         action="store_true",
-        help="Sample the collision-filtered, front-of-robot gripper workspace estimate",
+        help="Sample the EEPROM-calibrated, collision-filtered front gripper workspace",
+    )
+    parser.add_argument(
+        "--workspace-urdf-limits-only",
+        action="store_true",
+        help="Ignore SO-ARM EEPROM limits and sample the full URDF limits",
     )
     parser.add_argument(
         "--workspace-front-min-x-m",
@@ -653,8 +686,14 @@ def main() -> None:
                 flags=(pb.URDF_USE_INERTIA_FROM_FILE | pb.URDF_USE_SELF_COLLISION |
                        pb.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT),
             )
+            calibration_limits = None if args.workspace_urdf_limits_only else load_soarm_joint_limits()
             points, summary = workspace_samples(
-                robot, args.workspace_samples, args.workspace_voxel_m, args.workspace_front_min_x_m
+                robot, args.workspace_samples, args.workspace_voxel_m, args.workspace_front_min_x_m,
+                calibration_limits,
+            )
+            summary["servo_calibration"] = (
+                "not applied (URDF limits requested)" if calibration_limits is None
+                else str(SOARM_CALIBRATION)
             )
             write_workspace_ply(args.workspace_output, points)
             print(json.dumps(summary, indent=2, sort_keys=True))

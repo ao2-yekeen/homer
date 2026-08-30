@@ -39,6 +39,15 @@ class WorkspaceSamplesTests(unittest.TestCase):
         self.assertTrue(all(x >= 0.10 for x, _, _ in points))
         self.assertEqual(summary["front_min_x_m"], 0.10)
 
+    def test_soarm_eeprom_limits_are_used_as_a_subset_of_the_urdf_limits(self) -> None:
+        limits = sim.load_soarm_joint_limits()
+        points, summary = sim.workspace_samples(self.robot, 1_000, 0.01, joint_limit_overrides=limits)
+
+        self.assertTrue(points)
+        self.assertTrue(all(x >= 0.0 for x, _, _ in points))
+        self.assertLess(summary["joint_limits_rad"]["shoulder_pitch_joint"][1], 1.0)
+        self.assertEqual(summary["joint_limits_rad"]["wrist_roll_joint"], (-3.14, 3.14))
+
 
 if __name__ == "__main__":
     unittest.main()

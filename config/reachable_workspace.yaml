@@ -1,9 +1,10 @@
 # HOM-8 workspace-characterisation record.
 #
-# URDF geometry and joint limits are the preliminary source for the workspace
-# cloud. The generated cloud rejects points behind the robot and configurations
-# colliding with modelled mast/base/arm-mount/neck volumes. Values below
-# describe the physically placed raised platform, which is not in the URDF.
+# URDF geometry plus installed SO-ARM EEPROM limits are the source for the
+# workspace cloud. The generated cloud rejects points behind the robot and
+# configurations colliding with modelled mast/base/arm-mount/neck volumes.
+# Values below describe the physically placed raised platform, which is not in
+# the URDF.
 schema_version: 1
 frame:
   frame_id: base_footprint
@@ -18,11 +19,13 @@ frame:
     preliminary workspace model.
 
 servo_eeprom_to_urdf:
-  status: REQUIRES_HARDWARE_TEST
+  status: EEPROM_CALIBRATION_APPLIED_TO_MODEL
   note: >-
-    Servo EEPROM tick limits are enforced by pi/soarm_ros_bridge.py, but their
-    physical zero and direction have not yet been measured against the URDF
-    joint-angle references. Do not claim this workspace applies those limits.
+    The installed SO-ARM EEPROM offsets, directions, and current mechanical
+    tick limits are stored in config/soarm_servo_calibration.json. The default
+    workspace command converts those limits to radians around the SO-ARM
+    calibrated centre (2047.5 ticks) and intersects them with URDF limits.
+    Physical clearance validation is still required before motion planning.
 
 platform:
   height_m: null  # Measure from the same floor datum.

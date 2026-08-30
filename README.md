@@ -27,10 +27,10 @@ robot distribution. Hardware calibration, controller mappings, serial-device
 names, and wiring must be checked on the target robot before deployment. Drive
 calibration and SO-ARM EEPROM travel limits are robot-specific.
 
-The reachable-workspace visualisation is a model-derived planning aid. It is
-not a motion command or a proof that a physical move is safe. Its physical
-platform, clearance, and servo-to-URDF calibration checks must be completed
-before it is used for motion decisions.
+The reachable-workspace visualisation uses the calibrated URDF plus the
+installed SO-ARM EEPROM joint ranges. It is not a motion command or a proof
+that a physical move is safe. Physical platform and clearance checks must be
+completed before it is used for motion decisions.
 
 ## Quick start
 
@@ -48,9 +48,9 @@ Use `--gui`, `--2d`, `--2d-live`, or `--2d-gui` for visual modes. See the
 
 ### Inspect the arm workspace
 
-The workspace view samples the calibrated URDF, excludes points behind the
-robot, and rejects configurations colliding with the modelled mast, base,
-arm mount, or neck:
+The workspace view samples the calibrated URDF and installed SO-ARM EEPROM
+ranges, excludes points behind the robot, and rejects configurations colliding
+with the modelled mast, base, arm mount, or neck:
 
 ```bash
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
