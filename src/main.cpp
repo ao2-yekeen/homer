@@ -10,16 +10,10 @@
 #include <std_msgs/msg/bool.h>
 #include <std_msgs/msg/int32.h>
 
-// Motor A = right side, Motor B = left side (mirror-mounted, so its
-// direction pins are flipped relative to Motor A for the same physical
-// direction of travel).
-const int AIN1 = 25;
-const int AIN2 = 33;
-const int PWMA = 32;
+namespace {
 
-const int BIN1 = 27;
-const int BIN2 = 14;
-const int PWMB = 12;
+homer::RobotController robot;
+homer::MicroRosNode ros(robot);
 
 const int PWM_CH_A = 0;
 const int PWM_CH_B = 1;
@@ -187,38 +181,15 @@ void setupMicroRos() {
 }
 
 void setup() {
-  Serial2.begin(115200); // debug only; errorLoop() reports here if wired to a debug adapter
-
-  pinMode(AIN1, OUTPUT);
-  pinMode(AIN2, OUTPUT);
-  pinMode(BIN1, OUTPUT);
-  pinMode(BIN2, OUTPUT);
-
-  ledcSetup(PWM_CH_A, PWM_FREQ, PWM_RES);
-  ledcAttachPin(PWMA, PWM_CH_A);
-  ledcSetup(PWM_CH_B, PWM_FREQ, PWM_RES);
-  ledcAttachPin(PWMB, PWM_CH_B);
-
-  ledcSetup(PWM_CH_SERVO, SERVO_FREQ, SERVO_RES);
-  ledcAttachPin(SERVO_PIN, PWM_CH_SERVO);
-  setServoAngle(90); // safe initial neck position; teleop/neck_angle controls it
-
-  stopMotors();
-
-  setupMicroRos(); // takes over Serial (USB) for the Pi link; no more Serial.print after this
-
-  lastCmdVelMs = millis();
-  lastTeleopCmdVelMs = lastCmdVelMs;
+  const uint32_t now_ms = millis();
+  robot.begin(now_ms);
+  ros.begin();
+  robot.initializeNeck(millis());
 }
 
 void loop() {
-  // Not RCCHECK'd: spin_some legitimately returns non-OK (e.g. timeout) when
-  // there's simply nothing to process, which isn't a fatal condition.
-  rclc_executor_spin_some(&executor, RCL_MS_TO_NS(2));
-
-  // Dead-man switch: either active command source timing out stops the base.
-  unsigned long lastActiveCmdMs = mode == MODE_AUTONOMOUS ? lastCmdVelMs : lastTeleopCmdVelMs;
-  if (millis() - lastActiveCmdMs > CMDVEL_TIMEOUT_MS) {
-    stopMotors();
-  }
+  const uint32_t now_ms = millis();
+  ros.spin(now_ms);
+  robot.update(now_ms);
+  robot.enforceSafetyTimeout(now_ms);
 }

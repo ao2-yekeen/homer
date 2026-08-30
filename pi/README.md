@@ -1,4 +1,4 @@
-# Gamepad teleoperation
+# Raspberry Pi runtime
 
 The service starts the ROS 2 joystick driver and `gamepad_teleop.py`. The safe
 default is Autonomous. Press the labelled **A** button once to enter Teleop;
@@ -40,15 +40,28 @@ Copy `gamepad_teleop.py` to the Pi user's home directory and
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user disable --now mode-toggle.service
-systemctl --user enable --now gamepad-teleop.service
+systemctl --user enable --now robot-teleop.service
 ```
 
 For an arm-only test, leave the base off the floor or remap the drive topic to
 an unused name. Verify the topics before moving hardware:
 
 ```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic echo /joy
 ros2 topic echo /teleop/cmd_vel
 ros2 topic echo /teleop/neck_angle
 ros2 topic echo /soarm/command_delta_ticks
 ```
+
+The ESP32 firmware subscribes to `/teleop/cmd_vel` and publishes `/odom`.
+Verify startup with:
+
+```bash
+ros2 topic echo /odom --once
+systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
+```
+
+The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
+stable `/dev/robot-lidar` device link and restarts automatically if the USB
+device or driver temporarily disappears.

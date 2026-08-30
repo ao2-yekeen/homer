@@ -10,16 +10,24 @@ wrist_roll, gripper. Each command is relative to the current servo position
 and is clipped to +/-20 ticks. The bridge starts read-only.
 """
 
+import json
 import sys
 import threading
 import time
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, String
 
 sys.path.insert(0, "/home/robot-b")
-from STservo_sdk import COMM_SUCCESS, PortHandler, sts  # type: ignore
+from STservo_sdk import (  # type: ignore
+    COMM_SUCCESS,
+    STS_MOVING,
+    STS_PRESENT_CURRENT_L,
+    STS_PRESENT_LOAD_L,
+    PortHandler,
+    sts,
+)
 
 
 SERVO_IDS = (1, 2, 3, 4, 5, 6)
@@ -31,10 +39,23 @@ SERVO_NAMES = (
     "wrist_roll",
     "gripper",
 )
-# The previously available calibration belongs to a different arm pose/setup and
-# must not be used to correct live positions. STS position registers are 0–4095.
+# STS position registers are 0–4095.  The limits below were read directly from
+# this arm's servo EEPROM on 2026-08-25.  Keep these tick limits separate from
+# URDF radians: the simulation's joint-reference poses have not been aligned to
+# the physical arm yet.
 SERVO_TICK_MIN = 0
 SERVO_TICK_MAX = 4095
+# Joint 2 (shoulder lift) approaches the neck as its tick value decreases.
+# The measured clear, non-contact position was 1359.  Keep a ~90-tick margin
+# so that all ROS commands are contained outside the collision zone.
+JOINT_TICK_LIMITS = (
+    (730, 3444),  # shoulder_pan: servo EEPROM range
+    (1450, 2443),  # shoulder_lift: neck-collision guard (servo EEPROM range)
+    (890, 2506),  # elbow_flex: body-clearance limit (servo EEPROM range)
+    (2438, 3233),  # wrist_flex: gripper/body clearance (servo EEPROM range)
+    (SERVO_TICK_MIN, SERVO_TICK_MAX),  # wrist_roll
+    (2034, 3504),  # gripper: servo EEPROM range
+)
 MAX_DELTA_TICKS = 20
 SLOW_SPEED = 25
 SLOW_ACCELERATION = 5
@@ -45,19 +66,23 @@ class SoArmBridge(Node):
     def __init__(self) -> None:
         super().__init__("soarm_bridge")
         self.lock = threading.Lock()
-        self.port = PortHandler("/dev/ttyACM0")
+        self.port = PortHandler("/dev/robot-soarm")
         if not self.port.openPort() or not self.port.setBaudRate(1_000_000):
-            raise RuntimeError("Cannot open SO-ARM at /dev/ttyACM0, 1,000,000 baud")
+            raise RuntimeError("Cannot open SO-ARM at /dev/robot-soarm, 1,000,000 baud")
         self.packet = sts(self.port)
         self.motion_active = False
         self.last_motion_command_s = time.monotonic()
         self._verify_servos()
         self.targets = self.read_positions()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
+        self.joint_telemetry_pub = self.create_publisher(
+            String, "/soarm/joint_telemetry", 60
+        )
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
         )
         self.create_timer(1.0, self.publish_state)
+        self.create_timer(1.0, self.publish_joint_telemetry)
         self.create_timer(0.05, self.enforce_command_watchdog)
         self.publish_state()
         self.get_logger().info(
@@ -91,6 +116,50 @@ class SoArmBridge(Node):
         except Exception as exc:
             self.get_logger().error(f"State read failed: {exc}")
 
+    def publish_joint_telemetry(self) -> None:
+        """Publish non-invasive position, load, current, and moving diagnostics."""
+        try:
+            with self.lock:
+                positions = self.read_positions()
+                for index, (servo_id, name, position) in enumerate(
+                    zip(SERVO_IDS, SERVO_NAMES, positions)
+                ):
+                    load_encoded, result, error = self.packet.read2ByteTxRx(
+                        servo_id, STS_PRESENT_LOAD_L
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Load read failed for {name} (result={result}, error={error})"
+                        )
+                    current_raw, result, error = self.packet.read2ByteTxRx(
+                        servo_id, STS_PRESENT_CURRENT_L
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Current read failed for {name} (result={result}, error={error})"
+                        )
+                    moving, result, error = self.packet.read1ByteTxRx(servo_id, STS_MOVING)
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Moving-state read failed for {name} (result={result}, error={error})"
+                        )
+                    target = self.targets[index]
+                    telemetry = {
+                        "joint": name,
+                        "servo_id": servo_id,
+                        "position_ticks": position,
+                        "target_ticks": target,
+                        "position_error_ticks": target - position,
+                        "load_raw": self.packet.sts_tohost(load_encoded, 10),
+                        "current_raw": current_raw,
+                        "moving": int(moving),
+                    }
+                    self.joint_telemetry_pub.publish(
+                        String(data=json.dumps(telemetry, separators=(",", ":")))
+                    )
+        except Exception as exc:
+            self.get_logger().error(f"Joint telemetry read failed: {exc}")
+
     def hold_current_positions(self) -> None:
         """Cancel any remaining position trajectory by targeting each live position."""
         with self.lock:
@@ -104,6 +173,21 @@ class SoArmBridge(Node):
                     raise RuntimeError(
                         f"Hold failed for servo {servo_id} (result={result}, error={error})"
                     )
+
+    @staticmethod
+    def bounded_target(current: int, delta: int, minimum: int, maximum: int) -> int:
+        """Constrain a target without forcing a sudden recovery move.
+
+        A servo found outside its allowed interval may only move toward the
+        interval. This retains the normal per-command delta cap while blocking
+        any command that would move farther into a forbidden region.
+        """
+        proposed = current + delta
+        if current < minimum:
+            return max(current, proposed)
+        if current > maximum:
+            return min(current, proposed)
+        return max(minimum, min(maximum, proposed))
 
     def stop_motion(self, reason: str) -> None:
         if not self.motion_active:
@@ -132,8 +216,10 @@ class SoArmBridge(Node):
         try:
             with self.lock:
                 targets = [
-                    max(SERVO_TICK_MIN, min(SERVO_TICK_MAX, position + delta))
-                    for position, delta in zip(self.targets, requested)
+                    self.bounded_target(position, delta, minimum, maximum)
+                    for position, delta, (minimum, maximum) in zip(
+                        self.targets, requested, JOINT_TICK_LIMITS
+                    )
                 ]
                 for servo_id, delta, target in zip(SERVO_IDS, requested, targets):
                     if delta == 0:

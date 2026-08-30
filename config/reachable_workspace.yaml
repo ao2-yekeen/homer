@@ -1,0 +1,39 @@
+# HOM-8 workspace-characterisation record.
+#
+# URDF geometry and joint limits are the preliminary source for the workspace
+# cloud. The generated cloud rejects points behind the robot and configurations
+# colliding with modelled mast/base/arm-mount/neck volumes. Values below
+# describe the physically placed raised platform, which is not in the URDF.
+schema_version: 1
+frame:
+  frame_id: base_footprint
+  definition: >-
+    Origin on the floor projection of the robot base reference point. +x is
+    forward, +y is robot left, and +z is upward. Record all positions in
+    metres in this frame.
+  physical_alignment: REQUIRES_HARDWARE_TEST
+  nominal_arm_mount_xyz_m: [0.0, 0.0, 0.4]
+  nominal_arm_mount_source: >-
+    simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf;
+    preliminary workspace model.
+
+servo_eeprom_to_urdf:
+  status: REQUIRES_HARDWARE_TEST
+  note: >-
+    Servo EEPROM tick limits are enforced by pi/soarm_ros_bridge.py, but their
+    physical zero and direction have not yet been measured against the URDF
+    joint-angle references. Do not claim this workspace applies those limits.
+
+platform:
+  height_m: null  # Measure from the same floor datum.
+  usable_grasping_zone:
+    x_min_m: null
+    x_max_m: null
+    y_min_m: null
+    y_max_m: null
+  status: REQUIRES_HARDWARE_TEST
+
+# Generate `data/reachability/urdf_workspace.ply` with:
+# `python3 simulation/pybullet_sim.py --workspace --gui`.
+# Add physical discrepancy observations with `pi/soarm_workspace_record.py`.
+samples: []

@@ -1,0 +1,15 @@
+[Unit]
+Description=Robot gamepad coordinator (base and SO-ARM)
+After=network.target
+Wants=gamepad-joy.service
+After=gamepad-joy.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mobile-robot/pi/robot_teleop
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec env PYTHONPATH=%h/mobile-robot/pi/robot_teleop/src:$PYTHONPATH /usr/bin/python3 -m robot_teleop.node'
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target
