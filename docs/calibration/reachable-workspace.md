@@ -21,6 +21,7 @@ python3 simulation/pybullet_sim.py --workspace --workspace-viewer
 
 Each click selects the nearest reachable gripper-centre sample and displays its
 `x`, `y`, and `z` coordinates in centimetres. `+x` is forward and `+y` left.
+Use the mouse wheel to zoom, right-drag to pan, and `R` to reset the view.
 
 The green cloud contains gripper-centre positions in `base_footprint`. It is
 also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
