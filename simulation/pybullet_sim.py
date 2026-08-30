@@ -39,6 +39,13 @@ WORKSPACE_JOINT_NAMES = (
     "wrist_roll_joint",
     "gripper_joint",
 )
+WORKSPACE_OBSTACLE_LINK_NAMES = (
+    "lower_waffle_plate",
+    "upper_waffle_plate",
+    "mast_link",
+    "arm_base_mount",
+    "mg996_neck_servo",
+)
 WORLD_WALLS = [
     ((2.5, 0.0), (0.10, 5.0)),
     ((-2.5, 0.0), (0.10, 5.0)),
@@ -241,16 +248,39 @@ def gripper_centre(robot: int, gripper_link: int) -> tuple[float, float, float]:
     return tuple(pb.multiplyTransforms(state[4], state[5], (0.050, 0.0, 0.0), (0, 0, 0, 1))[0])
 
 
+def link_indices_by_name(robot: int, names: tuple[str, ...]) -> set[int]:
+    """Return link indices for named URDF links, rejecting incomplete models."""
+    indices = {pb.getJointInfo(robot, index)[12].decode(): index for index in range(pb.getNumJoints(robot))}
+    missing = [name for name in names if name not in indices]
+    if missing:
+        raise RuntimeError(f"URDF workspace obstacle links not found: {', '.join(missing)}")
+    return {indices[name] for name in names}
+
+
+def collides_with_workspace_obstacle(robot: int, obstacle_links: set[int]) -> bool:
+    """Return whether an arm link contacts the mast, base, mount, or neck.
+
+    The robot must be loaded with PyBullet self-collision enabled and the URDF
+    must provide collision geometry for the relevant links.
+    """
+    pb.performCollisionDetection()
+    for contact in pb.getContactPoints(bodyA=robot, bodyB=robot):
+        link_a, link_b = contact[3], contact[4]
+        if (link_a in obstacle_links) != (link_b in obstacle_links):
+            return True
+    return False
+
+
 def workspace_samples(
     robot: int,
     sample_count: int,
     voxel_size_m: float,
+    front_min_x_m: float = 0.0,
 ) -> tuple[list[tuple[float, float, float]], dict[str, object]]:
-    """Sample URDF joint limits and return deduplicated gripper-centre points.
+    """Sample safe front-of-robot URDF configurations and return gripper points.
 
-    This is a kinematic workspace estimate.  The v6 arm links do not all have
-    collision geometry, so this function intentionally does not label points
-    collision-free or physically verified.
+    Samples behind the robot are rejected by default. Configurations contacting
+    the modelled mast, base, mount, or neck are also rejected.
     """
     if sample_count < 1:
         raise ValueError("workspace sample count must be positive")
@@ -261,16 +291,27 @@ def workspace_samples(
     if any(lower >= upper for lower, upper in limits):
         raise RuntimeError("all workspace joints need finite lower and upper URDF limits")
     gripper_link = find_link(robot, "gripper")
+    obstacle_links = link_indices_by_name(robot, WORKSPACE_OBSTACLE_LINK_NAMES)
     bases = (2, 3, 5, 7, 11, 13)
     voxels: dict[tuple[int, int, int], tuple[float, float, float]] = {}
+    rejected_behind = 0
+    rejected_collision = 0
     for sample_index in range(1, sample_count + 1):
         values = [lower + (upper - lower) * halton(sample_index, base)
                   for (lower, upper), base in zip(limits, bases)]
         for joint_index, value in zip(indices, values):
             pb.resetJointState(robot, joint_index, value)
         point = gripper_centre(robot, gripper_link)
+        if point[0] < front_min_x_m:
+            rejected_behind += 1
+            continue
+        if collides_with_workspace_obstacle(robot, obstacle_links):
+            rejected_collision += 1
+            continue
         key = tuple(round(value / voxel_size_m) for value in point)
         voxels.setdefault(key, point)
+    if not voxels:
+        raise RuntimeError("no workspace samples survived front-of-robot and collision filtering")
     points = list(voxels.values())
     bounds = {
         "x_min_m": min(point[0] for point in points),
@@ -282,16 +323,21 @@ def workspace_samples(
     }
     return points, {
         "frame_id": "base_footprint",
-        "kind": "kinematic_reachable_workspace_estimate",
-        "source": "URDF geometry and joint limits",
+        "kind": "collision-filtered_front_workspace_estimate",
+        "source": "URDF geometry, joint limits, and modelled collision volumes",
         "sampled_configurations": sample_count,
+        "accepted_configurations": sample_count - rejected_behind - rejected_collision,
+        "rejected_behind_robot": rejected_behind,
+        "rejected_model_collision": rejected_collision,
+        "front_min_x_m": front_min_x_m,
         "voxel_size_m": voxel_size_m,
         "unique_voxels": len(points),
         "bounds_m": bounds,
         "joint_limits_rad": dict(zip(WORKSPACE_JOINT_NAMES, limits)),
         "limitations": [
             "No physical validation is implied.",
-            "No self/platform/cable collision filtering is implied unless the URDF contains that collision geometry.",
+            "Servo EEPROM ticks have not yet been calibrated to URDF joint angles.",
+            "Platform, cable, and any unmodelled collision volumes are not filtered.",
         ],
     }
 
@@ -500,7 +546,13 @@ def main() -> None:
     parser.add_argument(
         "--workspace",
         action="store_true",
-        help="Sample calibrated URDF joint limits and visualise the kinematic gripper workspace",
+        help="Sample the collision-filtered, front-of-robot gripper workspace estimate",
+    )
+    parser.add_argument(
+        "--workspace-front-min-x-m",
+        type=float,
+        default=0.0,
+        help="Keep only gripper-centre points at or in front of this base_footprint x coordinate (default: 0)",
     )
     parser.add_argument(
         "--workspace-samples",
@@ -565,10 +617,13 @@ def main() -> None:
         if args.workspace:
             # Fixed base keeps all output coordinates in the URDF's
             # base_footprint frame rather than a moving simulation world frame.
-            robot = pb.loadURDF(str(args.urdf), useFixedBase=True,
-                                flags=pb.URDF_USE_INERTIA_FROM_FILE)
+            robot = pb.loadURDF(
+                str(args.urdf), useFixedBase=True,
+                flags=(pb.URDF_USE_INERTIA_FROM_FILE | pb.URDF_USE_SELF_COLLISION |
+                       pb.URDF_USE_SELF_COLLISION_EXCLUDE_PARENT),
+            )
             points, summary = workspace_samples(
-                robot, args.workspace_samples, args.workspace_voxel_m
+                robot, args.workspace_samples, args.workspace_voxel_m, args.workspace_front_min_x_m
             )
             write_workspace_ply(args.workspace_output, points)
             print(json.dumps(summary, indent=2, sort_keys=True))
@@ -577,7 +632,7 @@ def main() -> None:
                 show_workspace(
                     points, args.workspace_envelope_voxel_m, args.workspace_slice_z_m
                 )
-                print("Height-coloured surface is the kinematic workspace envelope; close the GUI to exit.")
+                print("Height-coloured surface is the collision-filtered front workspace estimate; close the GUI to exit.")
                 started = time.monotonic()
                 while time.monotonic() - started < args.seconds:
                     pb.stepSimulation()

@@ -349,6 +349,9 @@
       <geometry><box size="0.060 0.080 0.080"/></geometry>
       <material name="arm_red"><color rgba="0.78 0.05 0.04 1"/></material>
     </visual>
+    <collision>
+      <geometry><box size="0.060 0.080 0.080"/></geometry>
+    </collision>
   </link>
   <joint name="arm_base_mount_joint" type="fixed">
     <parent link="mast_link"/>
@@ -362,6 +365,9 @@
       <geometry><box size="0.050 0.050 0.050"/></geometry>
       <material name="servo"><color rgba="0.10 0.10 0.10 1"/></material>
     </visual>
+    <collision>
+      <geometry><box size="0.050 0.050 0.050"/></geometry>
+    </collision>
   </link>
   <joint name="shoulder_yaw_joint" type="revolute">
     <parent link="arm_base_mount"/>
@@ -377,6 +383,10 @@
       <geometry><box size="0.120 0.045 0.045"/></geometry>
       <material name="arm_black"><color rgba="0.10 0.10 0.10 1"/></material>
     </visual>
+    <collision>
+      <origin xyz="0.060 0 0"/>
+      <geometry><box size="0.120 0.045 0.045"/></geometry>
+    </collision>
   </link>
   <joint name="shoulder_pitch_joint" type="revolute">
     <parent link="shoulder_servo"/>
@@ -391,6 +401,9 @@
       <geometry><box size="0.050 0.050 0.050"/></geometry>
       <material name="servo"/>
     </visual>
+    <collision>
+      <geometry><box size="0.050 0.050 0.050"/></geometry>
+    </collision>
   </link>
   <joint name="elbow_joint" type="revolute">
     <parent link="upper_arm"/>
@@ -406,6 +419,10 @@
       <geometry><box size="0.110 0.045 0.045"/></geometry>
       <material name="arm_magenta"><color rgba="0.72 0.04 0.48 1"/></material>
     </visual>
+    <collision>
+      <origin xyz="0.055 0 0"/>
+      <geometry><box size="0.110 0.045 0.045"/></geometry>
+    </collision>
   </link>
   <joint name="forearm_joint" type="fixed">
     <parent link="elbow_servo"/>
@@ -418,6 +435,9 @@
       <geometry><box size="0.048 0.048 0.048"/></geometry>
       <material name="servo"/>
     </visual>
+    <collision>
+      <geometry><box size="0.048 0.048 0.048"/></geometry>
+    </collision>
   </link>
   <joint name="wrist_pitch_joint" type="revolute">
     <parent link="forearm"/>
@@ -433,6 +453,10 @@
       <geometry><box size="0.080 0.040 0.040"/></geometry>
       <material name="arm_magenta"/>
     </visual>
+    <collision>
+      <origin xyz="0.040 0 0"/>
+      <geometry><box size="0.080 0.040 0.040"/></geometry>
+    </collision>
   </link>
   <joint name="wrist_roll_joint" type="revolute">
     <parent link="wrist_servo"/>
@@ -448,6 +472,10 @@
       <geometry><box size="0.100 0.070 0.055"/></geometry>
       <material name="gripper_orange"><color rgba="1.0 0.40 0.0 1"/></material>
     </visual>
+    <collision>
+      <origin xyz="0.050 0 0"/>
+      <geometry><box size="0.100 0.070 0.055"/></geometry>
+    </collision>
   </link>
   <joint name="gripper_joint" type="revolute">
     <parent link="wrist_roll_link"/>
@@ -512,4 +540,3 @@
   </joint>
 
 </robot>
-
