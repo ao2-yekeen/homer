@@ -15,14 +15,9 @@ The current work is split into two related areas:
 
 - **Arm safety baseline:** named SO-ARM poses and slow, repeatable motion are
   still the first physical prerequisite for automated grasping.
-- **Reachable-workspace model:** the current HOM-8 implementation generates a
-  conservative workspace estimate from the calibrated URDF. It helps compare
-  target positions with the model; it does not authorise a physical move.
-
-In this repository, “HOM-8” refers to the current reachable-workspace issue.
-Earlier project notes used HOM-8 for camera viewpoints. Those are different
-pieces of work; use the section title and acceptance criteria, not the number
-alone, when cross-referencing project notes.
+- **Reachable-workspace model:** the repository generates a conservative
+  workspace estimate from the calibrated URDF. It helps compare target
+  positions with the model; it does not authorise a physical move.
 
 Words such as `REQUIRES_HARDWARE_TEST` mean that software checks cannot prove
 the claim. Do not replace that marker with a success claim unless the stated
