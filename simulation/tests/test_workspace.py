@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -47,14 +46,13 @@ class WorkspaceSamplesTests(unittest.TestCase):
 
         self.assertEqual(point, (0.10, 0.00, 0.20))
 
-    def test_workspace_viewer_is_self_contained_and_reports_centimetres(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            path = Path(directory) / "viewer.html"
-            sim.write_workspace_viewer(path, self.robot, [(0.10, 0.00, 0.20)])
+    def test_workspace_view_transform_keeps_a_square_scale(self) -> None:
+        min_x, max_x, min_y, max_y, scale = sim.workspace_view_transform(
+            [(0.10, 0.00, 0.20), (0.20, 0.10, 0.80)], 960, 820, 60
+        )
 
-            content = path.read_text(encoding="utf-8")
-        self.assertIn("Nearest reachable point", content)
-        self.assertIn("cm", content)
+        self.assertAlmostEqual(max_x - min_x, max_y - min_y)
+        self.assertGreater(scale, 0.0)
 
 
 if __name__ == "__main__":
