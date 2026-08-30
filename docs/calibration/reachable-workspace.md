@@ -1,6 +1,7 @@
 # Characterising the reachable workspace
 
-This is the HOM-8 procedure. The primary workspace is generated from the URDF
+This is the physical-validation procedure for the current HOM-8 reachable-
+workspace implementation. The primary workspace is generated from the URDF
 geometry and joint limits, then limited to the front of the robot and filtered
 against the modelled mast/base/arm-mount/neck collision volumes. Physical
 observations are retained to validate a boundary, the servo-to-URDF alignment,
@@ -57,7 +58,7 @@ The recorder only appends an observation; it sends no ROS message and opens no
 servo device:
 
 ```bash
-cd ~/mobile-robot
+cd /path/to/esp32_robot_bt
 python3 pi/soarm_workspace_record.py \
   --sample-id front-centre-01 --x-m 0.20 --y-m 0.00 --z-m 0.32 \
   --result reachable --reason "Held safely with all clearances checked" \
@@ -66,7 +67,8 @@ python3 pi/soarm_workspace_record.py \
   --confirm-physical-observation
 ```
 
-The example coordinates and ticks are format examples, not measurements.
+The example coordinates and ticks are format examples, not measurements. The
+command only records an observation; it does not move the robot.
 Samples are appended to `data/reachability/workspace_samples.jsonl`, which is
 intentionally not committed because it is robot-specific experimental data.
 

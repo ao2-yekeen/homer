@@ -1,9 +1,17 @@
 # Raspberry Pi runtime
 
-The service starts the ROS 2 joystick driver and `gamepad_teleop.py`. The safe
-default is Autonomous. Press the labelled **A** button once to enter Teleop;
-hold the labelled **B** button for 1.5 seconds to return to Autonomous. There
-is no **Select** action.
+There are two gamepad implementations in this repository:
+
+- `gamepad_teleop.py` with `gamepad-teleop.service` is the older direct
+  teleoperation path. Its controls are documented below.
+- `robot_teleop/` with `robot-teleop.service` is the newer coordinator. It has
+  a different mapping and topic contract; use its
+  [separate guide](robot_teleop/README.md) when testing it.
+
+Do not enable both services at once. The safe default for the direct path is
+Autonomous. Press the labelled **A** button once to enter Teleop; hold the
+labelled **B** button for 1.5 seconds to return to Autonomous. There is no
+**Select** action.
 
 | Gamepad control (Xbox-labelled Aurora receiver) | Robot action |
 | --- | --- |
@@ -33,14 +41,14 @@ Before driving, confirm that `/joy` is present without moving the robot:
 ros2 topic echo /joy
 ```
 
-## Install on the Pi
+## Install the direct path on the Pi
 
 Copy `gamepad_teleop.py` to the Pi user's home directory and
 `gamepad-teleop.service` to `~/.config/systemd/user/`, then run:
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable --now robot-teleop.service
+systemctl --user enable --now gamepad-teleop.service
 ```
 
 For an arm-only test, leave the base off the floor or remap the drive topic to

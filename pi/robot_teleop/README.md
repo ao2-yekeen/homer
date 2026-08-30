@@ -17,6 +17,12 @@ The code is deliberately split into two layers:
 - `src/robot_teleop/node.py` is the thin ROS adapter. It only turns `/joy` into the
   three established ROS messages.
 
+This is separate from the older direct gamepad path documented in
+[`pi/README.md`](../README.md). Do not run both services at the same time. The
+service file assumes the repository is deployed as `~/mobile-robot`; if it is
+installed elsewhere, update `WorkingDirectory` and `PYTHONPATH` in
+`systemd/robot-teleop.service` before enabling it.
+
 ## Control layout
 
 | Control | Action | Status |
@@ -50,8 +56,9 @@ the left-stick axes, and the base teleop mapping have been confirmed. R1, A,
 B, right-stick, D-pad, and trigger mappings remain assumptions. See the
 repository root `README.md` for runtime checks and power-safety requirements.
 
-After mapping confirmation, copy this repository to `~/mobile-robot` on the
-Pi, install `systemd/robot-teleop.service` in `~/.config/systemd/user/`, and run:
+After mapping confirmation, deploy this repository at `~/mobile-robot` on the
+Pi, install `systemd/robot-teleop.service` in `~/.config/systemd/user/`, and
+run:
 
 ```bash
 systemctl --user daemon-reload
