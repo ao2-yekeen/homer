@@ -16,9 +16,8 @@ The green cloud contains gripper-centre positions in `base_footprint`. It is
 also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
 3D view outside PyBullet.
 
-Use the PyBullet mouse controls to orbit, pan, and zoom. Keyboard shortcuts:
-`W/A/S/D` pan; `Q/E` orbit; `Z/X` zoom; `1` top-down; `2` or `R` reset the
-angled view.
+Use the **Camera yaw (turn around)**, pitch, zoom, and look-at sliders in the
+PyBullet right-hand panel. PyBullet mouse controls remain available too.
 
 ## Reference frame
 

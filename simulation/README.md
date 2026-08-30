@@ -38,9 +38,9 @@ also writes the underlying gripper-centre point cloud to
 `data/reachability/urdf_workspace.ply`; open it in MeshLab or CloudCompare if
 a standalone view is useful.
 
-Navigate directly in PyBullet with its mouse orbit/pan/zoom controls. Keyboard
-shortcuts are also available: `W/A/S/D` pan, `Q/E` orbit, `Z/X` zoom, `1`
-top-down, and `2` or `R` restores the angled default view.
+Use the **Camera yaw (turn around)**, pitch, zoom, and look-at sliders in the
+PyBullet right-hand panel for reliable navigation. PyBullet mouse navigation
+remains available as well.
 
 When the raised platform height is measured in `base_footprint`, add an orange
 horizontal slice through the reachable region at that exact height:
