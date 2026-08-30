@@ -70,6 +70,40 @@ The example coordinates and ticks are format examples, not measurements.
 Samples are appended to `data/reachability/workspace_samples.jsonl`, which is
 intentionally not committed because it is robot-specific experimental data.
 
+## HOM-9 reachability lookup
+
+Build the reusable lookup once the URDF workspace cloud has been generated:
+
+```bash
+python3 pi/soarm_reachability_map.py build \
+  --points data/reachability/urdf_workspace.ply \
+  --output data/reachability/reachability_map.json
+```
+
+It stores `reachable` cells directly represented by collision-filtered samples,
+and `marginal` cells within a 3 cm boundary margin. Every other point is
+`unreachable`. Query an XYZ gripper-centre position in `base_footprint`:
+
+```bash
+python3 pi/soarm_reachability_map.py query \
+  --x-m 0.20 --y-m 0.00 --z-m 0.32
+```
+
+The lookup only filters candidate grasps. It does not approve a trajectory or
+command the robot; `marginal` is always `REQUIRES_HARDWARE_TEST`.
+
+After recording physical samples using the procedure above, compare them
+without moving hardware:
+
+```bash
+python3 pi/soarm_reachability_map.py validate \
+  --samples data/reachability/workspace_samples.jsonl
+```
+
+For HOM-9 acceptance, record several measurements whose non-marginal
+predictions match the observed result. Do not record a match until it has been
+observed on the physical robot.
+
 ## Completion evidence
 
 HOM-8 is complete when the calibrated-URDF point cloud has been generated and
