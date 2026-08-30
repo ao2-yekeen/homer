@@ -10,16 +10,24 @@ wrist_roll, gripper. Each command is relative to the current servo position
 and is clipped to +/-20 ticks. The bridge starts read-only.
 """
 
+import json
 import sys
 import threading
 import time
 
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Int16MultiArray
+from std_msgs.msg import Int16MultiArray, String
 
 sys.path.insert(0, "/home/robot-b")
-from STservo_sdk import COMM_SUCCESS, PortHandler, sts  # type: ignore
+from STservo_sdk import (  # type: ignore
+    COMM_SUCCESS,
+    STS_MOVING,
+    STS_PRESENT_CURRENT_L,
+    STS_PRESENT_LOAD_L,
+    PortHandler,
+    sts,
+)
 
 
 SERVO_IDS = (1, 2, 3, 4, 5, 6)
@@ -67,10 +75,14 @@ class SoArmBridge(Node):
         self._verify_servos()
         self.targets = self.read_positions()
         self.state_pub = self.create_publisher(Int16MultiArray, "/soarm/state_ticks", 10)
+        self.joint_telemetry_pub = self.create_publisher(
+            String, "/soarm/joint_telemetry", 60
+        )
         self.create_subscription(
             Int16MultiArray, "/soarm/command_delta_ticks", self.command_callback, 10
         )
         self.create_timer(1.0, self.publish_state)
+        self.create_timer(1.0, self.publish_joint_telemetry)
         self.create_timer(0.05, self.enforce_command_watchdog)
         self.publish_state()
         self.get_logger().info(
@@ -103,6 +115,50 @@ class SoArmBridge(Node):
             self.state_pub.publish(Int16MultiArray(data=positions))
         except Exception as exc:
             self.get_logger().error(f"State read failed: {exc}")
+
+    def publish_joint_telemetry(self) -> None:
+        """Publish non-invasive position, load, current, and moving diagnostics."""
+        try:
+            with self.lock:
+                positions = self.read_positions()
+                for index, (servo_id, name, position) in enumerate(
+                    zip(SERVO_IDS, SERVO_NAMES, positions)
+                ):
+                    load_encoded, result, error = self.packet.read2ByteTxRx(
+                        servo_id, STS_PRESENT_LOAD_L
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Load read failed for {name} (result={result}, error={error})"
+                        )
+                    current_raw, result, error = self.packet.read2ByteTxRx(
+                        servo_id, STS_PRESENT_CURRENT_L
+                    )
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Current read failed for {name} (result={result}, error={error})"
+                        )
+                    moving, result, error = self.packet.read1ByteTxRx(servo_id, STS_MOVING)
+                    if result != COMM_SUCCESS or error != 0:
+                        raise RuntimeError(
+                            f"Moving-state read failed for {name} (result={result}, error={error})"
+                        )
+                    target = self.targets[index]
+                    telemetry = {
+                        "joint": name,
+                        "servo_id": servo_id,
+                        "position_ticks": position,
+                        "target_ticks": target,
+                        "position_error_ticks": target - position,
+                        "load_raw": self.packet.sts_tohost(load_encoded, 10),
+                        "current_raw": current_raw,
+                        "moving": int(moving),
+                    }
+                    self.joint_telemetry_pub.publish(
+                        String(data=json.dumps(telemetry, separators=(",", ":")))
+                    )
+        except Exception as exc:
+            self.get_logger().error(f"Joint telemetry read failed: {exc}")
 
     def hold_current_positions(self) -> None:
         """Cancel any remaining position trajectory by targeting each live position."""
