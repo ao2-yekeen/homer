@@ -180,7 +180,11 @@ def parser() -> argparse.ArgumentParser:
     build.add_argument("--points", type=Path, required=True, help="ASCII PLY from simulation/pybullet_sim.py --workspace")
     build.add_argument("--output", type=Path, default=Path("data/reachability/reachability_map.json"))
     build.add_argument("--voxel-size-m", type=float, default=0.01)
-    build.add_argument("--marginal-margin-m", type=float, default=0.03)
+    # Keep the uncertainty band conservative: the recorded physical boundary
+    # trials are 1.41 cm from the nearest sampled cell and were observed
+    # unreachable.  A 1 cm band preserves a marginal region without masking
+    # those measured failures as marginal.
+    build.add_argument("--marginal-margin-m", type=float, default=0.01)
     query = commands.add_parser("query", help="classify a gripper-centre XYZ point in base_footprint")
     query.add_argument("--map", type=Path, default=Path("data/reachability/reachability_map.json"))
     query.add_argument("--x-m", type=float, required=True)
