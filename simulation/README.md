@@ -1,6 +1,6 @@
-# Lightweight robot simulation
+# Homer simulation
 
-This simulation loads the supplied v6 robot model directly from this
+This PyBullet simulation loads the supplied v6 robot model directly from this
 repository: `simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf`.
 
 It uses PyBullet in `DIRECT` mode by default, so it does not require a GPU,
@@ -23,7 +23,7 @@ To inspect the model in 3D:
 python3 simulation/pybullet_sim.py --gui --seconds 60
 ```
 
-## Visualise the calibrated arm workspace
+## Inspect the calibrated arm workspace
 
 Generate a dense, repeatable estimate of the usable workspace in front of the
 robot and view it around the 3D model with:
@@ -32,15 +32,20 @@ robot and view it around the 3D model with:
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
 ```
 
-The GUI renders a clean outer envelope rather than the raw dots: blue is low,
-then cyan, yellow, and red at the highest reachable positions. The command
-also writes the underlying gripper-centre point cloud to
+The GUI renders a clean outer envelope rather than raw points: blue is lowest,
+followed by cyan and yellow, with red at the highest reachable positions. The
+command also writes the underlying gripper-centre point cloud to
 `data/reachability/urdf_workspace.ply`; open it in MeshLab or CloudCompare if
 a standalone view is useful.
 
-Use the **Camera yaw (turn around)**, pitch, zoom, and look-at sliders in the
-PyBullet right-hand panel for reliable navigation. PyBullet mouse navigation
-remains available as well.
+Use the right-hand PyBullet panel to control the view:
+
+- **Camera yaw (turn around)** rotates around the robot.
+- **Camera pitch** raises or lowers the viewing angle.
+- **Camera zoom** changes distance from the robot.
+- **Camera look-at x/y/z** moves the view target.
+
+The standard PyBullet mouse controls remain available.
 
 When the raised platform height is measured in `base_footprint`, add an orange
 horizontal slice through the reachable region at that exact height:
@@ -57,12 +62,12 @@ python3 simulation/pybullet_sim.py --workspace --gui \
   --workspace-samples 50000 --workspace-voxel-m 0.005 --seconds 90
 ```
 
-The default output rejects gripper-centre points behind `base_footprint`'s
-`x=0` plane and configurations contacting the modelled mast, base, arm mount,
-or neck. It is still a model-derived estimate: platform and cable clearance
-are not represented, and the physical servo EEPROM ticks have not yet been
-calibrated to the URDF joint-angle references. Do not use the cloud as an
-automatic motion command or proof of safe motion.
+The default output excludes gripper-centre points behind
+`base_footprint`'s `x=0` plane and configurations contacting the modelled mast,
+base, arm mount, or neck. It remains a model-derived estimate: platform and
+cable clearance are not represented, and physical servo EEPROM ticks have not
+yet been calibrated to the URDF joint-angle references. Do not use the cloud
+as an automatic motion command or proof of safe motion.
 
 For the low-resource top-down view (robot path and simulated LiDAR points):
 
