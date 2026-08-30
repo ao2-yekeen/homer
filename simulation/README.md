@@ -39,16 +39,22 @@ also writes the underlying gripper-centre point cloud to
 a standalone view is useful.
 
 For a simpler interactive inspection view that does not use the PyBullet/OpenGL
-window or any extra Python package, use the browser viewer:
+window, use the native Python/Pygame viewer:
 
 ```bash
 python3 simulation/pybullet_sim.py --workspace --workspace-viewer
 ```
 
-It shows the robot as a top-down stick drawing. Click anywhere in the workspace
+It opens a real Python window showing the robot as a top-down stick drawing. Click anywhere in the workspace
 to select the nearest reachable point and read its `x`, `y`, and `z`
 coordinates in centimetres. In this view, `+x` is in front of the robot and
 `+y` is robot left.
+
+Install Pygame once if it is not already present:
+
+```bash
+python3 -m pip install --user pygame
+```
 
 When the raised platform height is measured in `base_footprint`, add an orange
 horizontal slice through the reachable region at that exact height:

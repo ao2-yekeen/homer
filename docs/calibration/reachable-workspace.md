@@ -12,8 +12,8 @@ Generate and view the model-derived point cloud:
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
 ```
 
-For a non-OpenGL top-down inspection view, with the robot represented as a
-stick figure and click-to-read centimetre coordinates, run:
+For a native Python non-OpenGL top-down inspection view, with the robot
+represented as a stick figure and click-to-read centimetre coordinates, run:
 
 ```bash
 python3 simulation/pybullet_sim.py --workspace --workspace-viewer
