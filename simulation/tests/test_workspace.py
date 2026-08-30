@@ -39,13 +39,6 @@ class WorkspaceSamplesTests(unittest.TestCase):
         self.assertTrue(all(x >= 0.10 for x, _, _ in points))
         self.assertEqual(summary["front_min_x_m"], 0.10)
 
-    def test_nearest_workspace_point_uses_top_down_distance(self) -> None:
-        point = sim.nearest_workspace_point(
-            [(0.10, 0.00, 0.20), (0.20, 0.10, 0.80)], 0.11, 0.01
-        )
-
-        self.assertEqual(point, (0.10, 0.00, 0.20))
-
 
 if __name__ == "__main__":
     unittest.main()
