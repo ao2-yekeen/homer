@@ -57,6 +57,7 @@ def make_lookup(
         for key in reachable
         for candidate in neighbouring_voxels(key, radius)
         if candidate not in reachable
+        and math.dist(candidate, key) * voxel_size_m <= marginal_margin_m
     }
     return {
         "schema_version": SCHEMA_VERSION,
@@ -85,10 +86,20 @@ def classify(lookup: dict[str, Any], point: Sequence[float]) -> str:
     if lookup.get("schema_version") != SCHEMA_VERSION:
         raise ValueError("unsupported reachability-map schema")
     key = voxel_key(point, float(lookup["voxel_size_m"]))
-    voxels = lookup["voxels"]
-    if key in {tuple(value) for value in voxels[REACHABLE]}:
+    # Cache the JSON lists as sets on the in-memory lookup.  This keeps the
+    # reusable query path constant-time after the first query without changing
+    # the portable, JSON-serialisable on-disk representation.
+    reachable = lookup.get("_reachable_voxels")
+    if reachable is None:
+        reachable = {tuple(value) for value in lookup["voxels"][REACHABLE]}
+        lookup["_reachable_voxels"] = reachable
+    marginal = lookup.get("_marginal_voxels")
+    if marginal is None:
+        marginal = {tuple(value) for value in lookup["voxels"][MARGINAL]}
+        lookup["_marginal_voxels"] = marginal
+    if key in reachable:
         return REACHABLE
-    if key in {tuple(value) for value in voxels[MARGINAL]}:
+    if key in marginal:
         return MARGINAL
     return UNREACHABLE
 
@@ -119,7 +130,7 @@ def read_ascii_ply(path: Path) -> list[tuple[float, float, float]]:
 
 
 def write_lookup(path: Path, lookup: dict[str, Any], source: str) -> None:
-    output = dict(lookup)
+    output = {key: value for key, value in lookup.items() if not key.startswith("_")}
     output["source"] = source
     output["counts"] = {
         REACHABLE: len(output["voxels"][REACHABLE]),

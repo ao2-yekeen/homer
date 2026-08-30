@@ -23,6 +23,10 @@ class ReachabilityMapTests(unittest.TestCase):
         self.assertEqual(classify(self.lookup, (0.11, 0.00, 0.30)), MARGINAL)
         self.assertEqual(classify(self.lookup, (0.20, 0.00, 0.30)), UNREACHABLE)
 
+    def test_marginal_margin_is_a_distance_not_a_voxel_cube(self):
+        # A diagonal cell is 1.73 cm away, so it must not fit in a 1 cm band.
+        self.assertEqual(classify(self.lookup, (0.11, 0.01, 0.31)), UNREACHABLE)
+
     def test_reads_ascii_ply(self):
         with tempfile.TemporaryDirectory() as directory:
             ply = Path(directory) / "points.ply"
