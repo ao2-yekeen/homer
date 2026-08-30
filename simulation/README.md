@@ -38,18 +38,6 @@ also writes the underlying gripper-centre point cloud to
 `data/reachability/urdf_workspace.ply`; open it in MeshLab or CloudCompare if
 a standalone view is useful.
 
-For a simpler inspection view that does not use the PyBullet/OpenGL window,
-use Matplotlib instead:
-
-```bash
-python3 simulation/pybullet_sim.py --workspace --workspace-matplotlib
-```
-
-It shows the robot as a top-down stick drawing. Click anywhere in the workspace
-to select the nearest reachable point and read its `x`, `y`, and `z`
-coordinates in centimetres. In this view, `+x` is in front of the robot and
-`+y` is robot left.
-
 When the raised platform height is measured in `base_footprint`, add an orange
 horizontal slice through the reachable region at that exact height:
 

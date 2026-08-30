@@ -354,77 +354,6 @@ def write_workspace_ply(path: Path, points: list[tuple[float, float, float]]) ->
             output.write(f"{x:.6f} {y:.6f} {z:.6f} 35 190 75\n")
 
 
-def nearest_workspace_point(
-    points: list[tuple[float, float, float]], x_m: float, y_m: float
-) -> tuple[float, float, float]:
-    """Return the workspace point nearest to a top-down click."""
-    if not points:
-        raise ValueError("workspace points must not be empty")
-    return min(points, key=lambda point: (point[0] - x_m) ** 2 + (point[1] - y_m) ** 2)
-
-
-def show_workspace_matplotlib(robot: int, points: list[tuple[float, float, float]]) -> None:
-    """Show a clickable top-down workspace view without using the OpenGL GUI."""
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
-
-    for index in joint_indices(robot):
-        pb.resetJointState(robot, index, 0.0)
-    pb.performCollisionDetection()
-
-    figure, axis = plt.subplots(figsize=(9, 8))
-    xs, ys, zs = zip(*points)
-    cloud = axis.scatter(xs, ys, c=[z * 100.0 for z in zs], cmap="turbo", s=8, alpha=0.58,
-                         linewidths=0, label="usable gripper-centre workspace")
-    colourbar = figure.colorbar(cloud, ax=axis, pad=0.02)
-    colourbar.set_label("gripper-centre height (cm)")
-
-    # Simple top-down robot: base rectangle, mast, and a neutral-pose stick arm.
-    axis.add_patch(Rectangle((-0.150, -0.1425), 0.300, 0.285,
-                             facecolor="#303030", edgecolor="black", alpha=0.85, label="robot base"))
-    axis.add_patch(Rectangle((-0.065, -0.020), 0.040, 0.040,
-                             facecolor="#aeb6bf", edgecolor="black", label="aluminium mast"))
-    arm_links = ("arm_base_mount", "shoulder_servo", "upper_arm", "elbow_servo", "forearm",
-                 "wrist_servo", "wrist_roll_link", "gripper")
-    arm_xy = []
-    for name in arm_links:
-        state = pb.getLinkState(robot, find_link(robot, name), computeForwardKinematics=True)
-        arm_xy.append((state[4][0], state[4][1]))
-    axis.plot(*zip(*arm_xy), color="#ff7f0e", linewidth=5, marker="o", markersize=5,
-              label="arm (neutral stick view)")
-    axis.annotate("+x forward", (0.32, 0.0), xytext=(0.10, 0.04),
-                  arrowprops={"arrowstyle": "->", "color": "crimson"}, color="crimson")
-
-    selected, = axis.plot([], [], marker="x", color="black", markersize=10, markeredgewidth=2,
-                          linestyle="none", label="selected reachable point")
-    coordinate_label = axis.text(
-        0.02, 0.98, "Click the workspace to read the nearest reachable point in cm.",
-        transform=axis.transAxes, va="top", ha="left",
-        bbox={"facecolor": "white", "alpha": 0.9, "edgecolor": "0.5"},
-    )
-
-    def on_click(event) -> None:
-        if event.inaxes is not axis or event.xdata is None or event.ydata is None:
-            return
-        x_m, y_m, z_m = nearest_workspace_point(points, event.xdata, event.ydata)
-        selected.set_data([x_m], [y_m])
-        coordinate_label.set_text(
-            f"Nearest reachable point: x={x_m * 100:+.1f} cm, "
-            f"y={y_m * 100:+.1f} cm, z={z_m * 100:+.1f} cm"
-        )
-        figure.canvas.draw_idle()
-
-    figure.canvas.mpl_connect("button_press_event", on_click)
-    axis.set_title("Homer usable arm workspace — click for centimetre coordinates")
-    axis.set_xlabel("x: forward (+) / rear (−) metres")
-    axis.set_ylabel("y: left (+) / right (−) metres")
-    axis.set_aspect("equal", adjustable="box")
-    axis.grid(alpha=0.25)
-    axis.legend(loc="lower right")
-    figure.tight_layout()
-    plt.show()
-
-
 def workspace_envelope_voxels(
     points: list[tuple[float, float, float]], voxel_size_m: float
 ) -> set[tuple[int, int, int]]:
@@ -620,11 +549,6 @@ def main() -> None:
         help="Sample the collision-filtered, front-of-robot gripper workspace estimate",
     )
     parser.add_argument(
-        "--workspace-matplotlib",
-        action="store_true",
-        help="Open a clickable Matplotlib top-down workspace view instead of the PyBullet OpenGL view",
-    )
-    parser.add_argument(
         "--workspace-front-min-x-m",
         type=float,
         default=0.0,
@@ -677,8 +601,6 @@ def main() -> None:
     parser.add_argument("--save-2d", type=Path, metavar="PNG",
                         help="Save a final 2D view image (useful on headless systems)")
     args = parser.parse_args()
-    if args.workspace_matplotlib and not args.workspace:
-        parser.error("--workspace-matplotlib requires --workspace")
     if not args.urdf.exists():
         raise SystemExit(f"URDF not found: {args.urdf}")
 
@@ -706,9 +628,6 @@ def main() -> None:
             write_workspace_ply(args.workspace_output, points)
             print(json.dumps(summary, indent=2, sort_keys=True))
             print(f"wrote {len(points)} workspace points to {args.workspace_output}")
-            if args.workspace_matplotlib:
-                show_workspace_matplotlib(robot, points)
-                return
             if args.gui:
                 show_workspace(
                     points, args.workspace_envelope_voxel_m, args.workspace_slice_z_m
