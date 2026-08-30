@@ -487,7 +487,55 @@ def show_workspace(
     ):
         pb.addUserDebugLine((0, 0, 0), endpoint, lineColorRGB=colour, lineWidth=3)
         pb.addUserDebugText(axis, endpoint, textColorRGB=colour, textSize=1.2)
-    pb.resetDebugVisualizerCamera(1.4, 45, -24, (0.0, 0.0, 0.30))
+    pb.addUserDebugText(
+        "Mouse: orbit / pan / zoom    Keys: W/A/S/D pan, Q/E orbit, Z/X zoom, 1 top, 2 angled, R reset",
+        (-0.42, -0.34, 0.02), textColorRGB=(0.05, 0.05, 0.05), textSize=1.05,
+    )
+
+
+def update_workspace_camera(
+    camera: tuple[float, float, float, tuple[float, float, float]], keyboard: dict[int, int]
+) -> tuple[float, float, float, tuple[float, float, float]]:
+    """Apply keyboard navigation to the PyBullet workspace camera when requested."""
+    distance, yaw, pitch, target = camera
+    target_x, target_y, target_z = target
+    pressed = lambda key: keyboard.get(key, 0) & pb.KEY_WAS_TRIGGERED
+    pan_step = max(0.02, distance * 0.04)
+    changed = False
+    if pressed(ord("w")):
+        target_x += pan_step
+        changed = True
+    if pressed(ord("s")):
+        target_x -= pan_step
+        changed = True
+    if pressed(ord("a")):
+        target_y += pan_step
+        changed = True
+    if pressed(ord("d")):
+        target_y -= pan_step
+        changed = True
+    if pressed(ord("q")):
+        yaw -= 8.0
+        changed = True
+    if pressed(ord("e")):
+        yaw += 8.0
+        changed = True
+    if pressed(ord("z")):
+        distance = max(0.25, distance * 0.85)
+        changed = True
+    if pressed(ord("x")):
+        distance = min(5.0, distance * 1.18)
+        changed = True
+    if pressed(ord("1")):
+        distance, yaw, pitch, target_x, target_y, target_z = 1.25, 0.0, -89.0, 0.10, 0.0, 0.25
+        changed = True
+    if pressed(ord("2")) or pressed(ord("r")):
+        distance, yaw, pitch, target_x, target_y, target_z = 1.4, 45.0, -24.0, 0.0, 0.0, 0.30
+        changed = True
+    result = (distance, yaw, pitch, (target_x, target_y, target_z))
+    if changed:
+        pb.resetDebugVisualizerCamera(distance, yaw, pitch, result[3])
+    return result
 
 
 def scan(robot: int, lidar_link: int, pose: tuple[float, float, float]) -> list[float]:
@@ -632,9 +680,12 @@ def main() -> None:
                 show_workspace(
                     points, args.workspace_envelope_voxel_m, args.workspace_slice_z_m
                 )
-                print("Height-coloured surface is the collision-filtered front workspace estimate; close the GUI to exit.")
+                camera = (1.4, 45.0, -24.0, (0.0, 0.0, 0.30))
+                pb.resetDebugVisualizerCamera(*camera)
+                print("Height-coloured front workspace. Use mouse or W/A/S/D, Q/E, Z/X, 1/2/R; close GUI to exit.")
                 started = time.monotonic()
                 while time.monotonic() - started < args.seconds:
+                    camera = update_workspace_camera(camera, pb.getKeyboardEvents())
                     pb.stepSimulation()
                     time.sleep(1.0 / 60.0)
             return
