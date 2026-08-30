@@ -14,6 +14,7 @@ import math
 import os
 import random
 import time
+import webbrowser
 from pathlib import Path
 
 import pybullet as pb
@@ -363,28 +364,8 @@ def nearest_workspace_point(
     return min(points, key=lambda point: (point[0] - x_m) ** 2 + (point[1] - y_m) ** 2)
 
 
-def workspace_view_transform(
-    points: list[tuple[float, float, float]], width_px: int, height_px: int, padding_px: int
-) -> tuple[float, float, float, float, float]:
-    """Return square top-down world bounds and pixel scale for the Python viewer."""
-    if not points:
-        raise ValueError("workspace points must not be empty")
-    min_x = min(-0.18, *(point[0] for point in points))
-    max_x = max(0.48, *(point[0] for point in points))
-    min_y = min(-0.40, *(point[1] for point in points))
-    max_y = max(0.40, *(point[1] for point in points))
-    span = max(max_x - min_x, max_y - min_y)
-    mid_x, mid_y = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
-    min_x, max_x = mid_x - span / 2.0, mid_x + span / 2.0
-    min_y, max_y = mid_y - span / 2.0, mid_y + span / 2.0
-    scale = min((width_px - 2 * padding_px) / span, (height_px - 2 * padding_px) / span)
-    return min_x, max_x, min_y, max_y, scale
-
-
-def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) -> None:
-    """Open a native Python/Pygame top-down workspace viewer with click readout."""
-    import pygame
-
+def write_workspace_viewer(path: Path, robot: int, points: list[tuple[float, float, float]]) -> None:
+    """Write a dependency-free, clickable top-down workspace viewer as HTML."""
     for index in joint_indices(robot):
         pb.resetJointState(robot, index, 0.0)
     pb.performCollisionDetection()
@@ -394,61 +375,38 @@ def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) 
     for name in arm_links:
         state = pb.getLinkState(robot, find_link(robot, name), computeForwardKinematics=True)
         arm_xy.append((state[4][0], state[4][1]))
-    width, height, padding = 960, 820, 60
-    min_x, _, min_y, _, scale = workspace_view_transform(points, width, height, padding)
-    z_min, z_max = min(point[2] for point in points), max(point[2] for point in points)
-
-    def to_screen(point: tuple[float, float]) -> tuple[int, int]:
-        return (round(padding + (point[0] - min_x) * scale),
-                round(height - padding - (point[1] - min_y) * scale))
-
-    def to_world(pixel: tuple[int, int]) -> tuple[float, float]:
-        return ((pixel[0] - padding) / scale + min_x,
-                (height - padding - pixel[1]) / scale + min_y)
-
-    def colour_for_height(z_m: float) -> tuple[int, int, int]:
-        fraction = 0.5 if z_max == z_min else (z_m - z_min) / (z_max - z_min)
-        return (round(25 + 230 * fraction), round(80 + 140 * (1.0 - abs(2 * fraction - 1))),
-                round(245 - 220 * fraction))
-
-    pygame.init()
-    screen = pygame.display.set_mode((width, height))
-    pygame.display.set_caption("Homer usable workspace — click for centimetre coordinates")
-    font, small_font = pygame.font.Font(None, 27), pygame.font.Font(None, 20)
-    clock, selected = pygame.time.Clock(), None
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                selected = nearest_workspace_point(points, *to_world(event.pos))
-
-        screen.fill((250, 250, 250))
-        for centimetres in range(-40, 61, 10):
-            coordinate = centimetres / 100.0
-            pygame.draw.line(screen, (225, 229, 232), to_screen((coordinate, min_y)),
-                             to_screen((coordinate, min_y + (height - 2 * padding) / scale)))
-            pygame.draw.line(screen, (225, 229, 232), to_screen((min_x, coordinate)),
-                             to_screen((min_x + (width - 2 * padding) / scale, coordinate)))
-        pygame.draw.rect(screen, (48, 48, 48), (*to_screen((-0.15, 0.1425)), round(0.30 * scale), round(0.285 * scale)))
-        pygame.draw.rect(screen, (174, 182, 191), (*to_screen((-0.065, 0.020)), round(0.040 * scale), round(0.040 * scale)))
-        for point in points:
-            pygame.draw.circle(screen, colour_for_height(point[2]), to_screen((point[0], point[1])), 3)
-        pygame.draw.lines(screen, (255, 127, 14), False, [to_screen(point) for point in arm_xy], 5)
-        for point in arm_xy:
-            pygame.draw.circle(screen, (255, 127, 14), to_screen(point), 5)
-        pygame.draw.line(screen, (190, 20, 35), to_screen((0.0, 0.0)), to_screen((0.25, 0.0)), 3)
-        screen.blit(font.render("+x forward", True, (190, 20, 35)), to_screen((0.16, 0.03)))
-        screen.blit(font.render("Click a coloured point for coordinates in cm", True, (20, 25, 30)), (20, 15))
-        screen.blit(small_font.render("Blue = low height; red = high height.  Orange = neutral stick arm.", True, (50, 55, 60)), (20, 42))
-        if selected is not None:
-            pygame.draw.circle(screen, (0, 0, 0), to_screen((selected[0], selected[1])), 10, width=3)
-            label = f"x={selected[0] * 100:+.1f} cm, y={selected[1] * 100:+.1f} cm, z={selected[2] * 100:+.1f} cm"
-            screen.blit(font.render(label, True, (0, 0, 0)), (20, height - 38))
-        pygame.display.flip()
-        clock.tick(60)
-    pygame.quit()
+    point_json = json.dumps(points, separators=(",", ":"))
+    arm_json = json.dumps(arm_xy, separators=(",", ":"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"""<!doctype html>
+<meta charset=\"utf-8\"><title>Homer workspace viewer</title>
+<style>body {{ font: 16px system-ui, sans-serif; margin: 1rem; color:#20252a }} canvas {{ border:1px solid #aaa; max-width:100%; cursor:crosshair }} #readout {{ font-weight:600; min-height:1.5em }}</style>
+<h1>Homer usable arm workspace</h1>
+<p>Top-down view. Click the coloured workspace to select the nearest reachable point and read its coordinates in centimetres.</p>
+<canvas id=\"view\" width=\"900\" height=\"760\"></canvas>
+<p id=\"readout\">Click a coloured point.</p>
+<p>Colour indicates gripper-centre height: blue is low, red is high. +x is forward; +y is robot left. The orange line is the neutral-pose stick arm.</p>
+<script>
+const points={point_json}, arm={arm_json}, canvas=document.querySelector('#view'), ctx=canvas.getContext('2d'), readout=document.querySelector('#readout');
+const pad=55, xs=points.map(p=>p[0]), ys=points.map(p=>p[1]), zs=points.map(p=>p[2]);
+let minX=Math.min(-.18,...xs), maxX=Math.max(.48,...xs), minY=Math.min(-.40,...ys), maxY=Math.max(.40,...ys);
+const span=Math.max(maxX-minX,maxY-minY), midX=(minX+maxX)/2, midY=(minY+maxY)/2;
+minX=midX-span/2; maxX=midX+span/2; minY=midY-span/2; maxY=midY+span/2;
+const scale=Math.min((canvas.width-2*pad)/(maxX-minX),(canvas.height-2*pad)/(maxY-minY));
+const tx=x=>pad+(x-minX)*scale, ty=y=>canvas.height-pad-(y-minY)*scale;
+const colour=z=>{{const t=(z-Math.min(...zs))/Math.max(.0001,Math.max(...zs)-Math.min(...zs)); return `hsl(${{240-240*t}},85%,48%)`;}};
+function line(x1,y1,x2,y2,c,w=1){{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(tx(x1),ty(y1));ctx.lineTo(tx(x2),ty(y2));ctx.stroke();}}
+function draw(selected){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fafafa';ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let i=Math.ceil(minX/.1)*.1;i<=maxX;i+=.1){{line(i,minY,i,maxY,'#e1e5e8');ctx.fillStyle='#555';ctx.fillText(`${{Math.round(i*100)}}`,tx(i)-8,canvas.height-20)}}
+  for(let i=Math.ceil(minY/.1)*.1;i<=maxY;i+=.1){{line(minX,i,maxX,i,'#e1e5e8');ctx.fillStyle='#555';ctx.fillText(`${{Math.round(i*100)}}`,8,ty(i)+4)}}
+  ctx.fillStyle='#303030';ctx.fillRect(tx(-.15),ty(.1425),.3*scale,.285*scale);ctx.fillStyle='#aeb6bf';ctx.fillRect(tx(-.065),ty(.02),.04*scale,.04*scale);
+  for(const p of points){{ctx.fillStyle=colour(p[2]);ctx.globalAlpha=.62;ctx.beginPath();ctx.arc(tx(p[0]),ty(p[1]),2.5,0,2*Math.PI);ctx.fill()}}ctx.globalAlpha=1;
+  ctx.strokeStyle='#ff7f0e';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(tx(arm[0][0]),ty(arm[0][1]));for(const p of arm.slice(1))ctx.lineTo(tx(p[0]),ty(p[1]));ctx.stroke();
+  line(0,0,.25,0,'crimson',3);ctx.fillStyle='crimson';ctx.fillText('+x forward',tx(.18),ty(.03));ctx.fillStyle='#222';ctx.fillText('x (cm)',canvas.width-55,canvas.height-8);ctx.fillText('y (cm)',10,22);
+  if(selected){{ctx.strokeStyle='black';ctx.lineWidth=3;ctx.beginPath();ctx.arc(tx(selected[0]),ty(selected[1]),8,0,2*Math.PI);ctx.stroke();}}
+}}
+draw();canvas.addEventListener('click',e=>{{const r=canvas.getBoundingClientRect(), px=(e.clientX-r.left)*canvas.width/r.width, py=(e.clientY-r.top)*canvas.height/r.height, x=minX+(px-pad)/scale, y=minY+(canvas.height-pad-py)/scale;let best=points[0],d=Infinity;for(const p of points){{const q=(p[0]-x)**2+(p[1]-y)**2;if(q<d){{d=q;best=p}}}}draw(best);readout.textContent=`Nearest reachable point: x=${{(best[0]*100).toFixed(1)}} cm, y=${{(best[1]*100).toFixed(1)}} cm, z=${{(best[2]*100).toFixed(1)}} cm`;}});
+</script>""", encoding="utf-8")
 
 
 def workspace_envelope_voxels(
@@ -648,7 +606,13 @@ def main() -> None:
     parser.add_argument(
         "--workspace-viewer",
         action="store_true",
-        help="Open a clickable native Python/Pygame top-down workspace view (no OpenGL required)",
+        help="Write and open a clickable browser-based top-down workspace view (no OpenGL required)",
+    )
+    parser.add_argument(
+        "--workspace-viewer-output",
+        type=Path,
+        default=Path("data/reachability/workspace_viewer.html"),
+        help="HTML file written by --workspace-viewer",
     )
     parser.add_argument(
         "--workspace-front-min-x-m",
@@ -733,7 +697,9 @@ def main() -> None:
             print(json.dumps(summary, indent=2, sort_keys=True))
             print(f"wrote {len(points)} workspace points to {args.workspace_output}")
             if args.workspace_viewer:
-                show_workspace_pygame(robot, points)
+                write_workspace_viewer(args.workspace_viewer_output, robot, points)
+                print(f"wrote clickable workspace viewer to {args.workspace_viewer_output}")
+                webbrowser.open(args.workspace_viewer_output.resolve().as_uri())
                 return
             if args.gui:
                 show_workspace(
