@@ -16,7 +16,7 @@ For a non-OpenGL top-down inspection view, with the robot represented as a
 stick figure and click-to-read centimetre coordinates, run:
 
 ```bash
-python3 simulation/pybullet_sim.py --workspace --workspace-matplotlib
+python3 simulation/pybullet_sim.py --workspace --workspace-viewer
 ```
 
 Each click selects the nearest reachable gripper-centre sample and displays its

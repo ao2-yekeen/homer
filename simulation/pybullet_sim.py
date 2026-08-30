@@ -14,6 +14,7 @@ import math
 import os
 import random
 import time
+import webbrowser
 from pathlib import Path
 
 import pybullet as pb
@@ -363,66 +364,49 @@ def nearest_workspace_point(
     return min(points, key=lambda point: (point[0] - x_m) ** 2 + (point[1] - y_m) ** 2)
 
 
-def show_workspace_matplotlib(robot: int, points: list[tuple[float, float, float]]) -> None:
-    """Show a clickable top-down workspace view without using the OpenGL GUI."""
-    import matplotlib.pyplot as plt
-    from matplotlib.patches import Rectangle
-
+def write_workspace_viewer(path: Path, robot: int, points: list[tuple[float, float, float]]) -> None:
+    """Write a dependency-free, clickable top-down workspace viewer as HTML."""
     for index in joint_indices(robot):
         pb.resetJointState(robot, index, 0.0)
     pb.performCollisionDetection()
-
-    figure, axis = plt.subplots(figsize=(9, 8))
-    xs, ys, zs = zip(*points)
-    cloud = axis.scatter(xs, ys, c=[z * 100.0 for z in zs], cmap="turbo", s=8, alpha=0.58,
-                         linewidths=0, label="usable gripper-centre workspace")
-    colourbar = figure.colorbar(cloud, ax=axis, pad=0.02)
-    colourbar.set_label("gripper-centre height (cm)")
-
-    # Simple top-down robot: base rectangle, mast, and a neutral-pose stick arm.
-    axis.add_patch(Rectangle((-0.150, -0.1425), 0.300, 0.285,
-                             facecolor="#303030", edgecolor="black", alpha=0.85, label="robot base"))
-    axis.add_patch(Rectangle((-0.065, -0.020), 0.040, 0.040,
-                             facecolor="#aeb6bf", edgecolor="black", label="aluminium mast"))
     arm_links = ("arm_base_mount", "shoulder_servo", "upper_arm", "elbow_servo", "forearm",
                  "wrist_servo", "wrist_roll_link", "gripper")
     arm_xy = []
     for name in arm_links:
         state = pb.getLinkState(robot, find_link(robot, name), computeForwardKinematics=True)
         arm_xy.append((state[4][0], state[4][1]))
-    axis.plot(*zip(*arm_xy), color="#ff7f0e", linewidth=5, marker="o", markersize=5,
-              label="arm (neutral stick view)")
-    axis.annotate("+x forward", (0.32, 0.0), xytext=(0.10, 0.04),
-                  arrowprops={"arrowstyle": "->", "color": "crimson"}, color="crimson")
-
-    selected, = axis.plot([], [], marker="x", color="black", markersize=10, markeredgewidth=2,
-                          linestyle="none", label="selected reachable point")
-    coordinate_label = axis.text(
-        0.02, 0.98, "Click the workspace to read the nearest reachable point in cm.",
-        transform=axis.transAxes, va="top", ha="left",
-        bbox={"facecolor": "white", "alpha": 0.9, "edgecolor": "0.5"},
-    )
-
-    def on_click(event) -> None:
-        if event.inaxes is not axis or event.xdata is None or event.ydata is None:
-            return
-        x_m, y_m, z_m = nearest_workspace_point(points, event.xdata, event.ydata)
-        selected.set_data([x_m], [y_m])
-        coordinate_label.set_text(
-            f"Nearest reachable point: x={x_m * 100:+.1f} cm, "
-            f"y={y_m * 100:+.1f} cm, z={z_m * 100:+.1f} cm"
-        )
-        figure.canvas.draw_idle()
-
-    figure.canvas.mpl_connect("button_press_event", on_click)
-    axis.set_title("Homer usable arm workspace — click for centimetre coordinates")
-    axis.set_xlabel("x: forward (+) / rear (−) metres")
-    axis.set_ylabel("y: left (+) / right (−) metres")
-    axis.set_aspect("equal", adjustable="box")
-    axis.grid(alpha=0.25)
-    axis.legend(loc="lower right")
-    figure.tight_layout()
-    plt.show()
+    point_json = json.dumps(points, separators=(",", ":"))
+    arm_json = json.dumps(arm_xy, separators=(",", ":"))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(f"""<!doctype html>
+<meta charset=\"utf-8\"><title>Homer workspace viewer</title>
+<style>body {{ font: 16px system-ui, sans-serif; margin: 1rem; color:#20252a }} canvas {{ border:1px solid #aaa; max-width:100%; cursor:crosshair }} #readout {{ font-weight:600; min-height:1.5em }}</style>
+<h1>Homer usable arm workspace</h1>
+<p>Top-down view. Click the coloured workspace to select the nearest reachable point and read its coordinates in centimetres.</p>
+<canvas id=\"view\" width=\"900\" height=\"760\"></canvas>
+<p id=\"readout\">Click a coloured point.</p>
+<p>Colour indicates gripper-centre height: blue is low, red is high. +x is forward; +y is robot left. The orange line is the neutral-pose stick arm.</p>
+<script>
+const points={point_json}, arm={arm_json}, canvas=document.querySelector('#view'), ctx=canvas.getContext('2d'), readout=document.querySelector('#readout');
+const pad=55, xs=points.map(p=>p[0]), ys=points.map(p=>p[1]), zs=points.map(p=>p[2]);
+let minX=Math.min(-.18,...xs), maxX=Math.max(.48,...xs), minY=Math.min(-.40,...ys), maxY=Math.max(.40,...ys);
+const span=Math.max(maxX-minX,maxY-minY), midX=(minX+maxX)/2, midY=(minY+maxY)/2;
+minX=midX-span/2; maxX=midX+span/2; minY=midY-span/2; maxY=midY+span/2;
+const scale=Math.min((canvas.width-2*pad)/(maxX-minX),(canvas.height-2*pad)/(maxY-minY));
+const tx=x=>pad+(x-minX)*scale, ty=y=>canvas.height-pad-(y-minY)*scale;
+const colour=z=>{{const t=(z-Math.min(...zs))/Math.max(.0001,Math.max(...zs)-Math.min(...zs)); return `hsl(${{240-240*t}},85%,48%)`;}};
+function line(x1,y1,x2,y2,c,w=1){{ctx.strokeStyle=c;ctx.lineWidth=w;ctx.beginPath();ctx.moveTo(tx(x1),ty(y1));ctx.lineTo(tx(x2),ty(y2));ctx.stroke();}}
+function draw(selected){{ctx.clearRect(0,0,canvas.width,canvas.height);ctx.fillStyle='#fafafa';ctx.fillRect(0,0,canvas.width,canvas.height);
+  for(let i=Math.ceil(minX/.1)*.1;i<=maxX;i+=.1){{line(i,minY,i,maxY,'#e1e5e8');ctx.fillStyle='#555';ctx.fillText(`${{Math.round(i*100)}}`,tx(i)-8,canvas.height-20)}}
+  for(let i=Math.ceil(minY/.1)*.1;i<=maxY;i+=.1){{line(minX,i,maxX,i,'#e1e5e8');ctx.fillStyle='#555';ctx.fillText(`${{Math.round(i*100)}}`,8,ty(i)+4)}}
+  ctx.fillStyle='#303030';ctx.fillRect(tx(-.15),ty(.1425),.3*scale,.285*scale);ctx.fillStyle='#aeb6bf';ctx.fillRect(tx(-.065),ty(.02),.04*scale,.04*scale);
+  for(const p of points){{ctx.fillStyle=colour(p[2]);ctx.globalAlpha=.62;ctx.beginPath();ctx.arc(tx(p[0]),ty(p[1]),2.5,0,2*Math.PI);ctx.fill()}}ctx.globalAlpha=1;
+  ctx.strokeStyle='#ff7f0e';ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(tx(arm[0][0]),ty(arm[0][1]));for(const p of arm.slice(1))ctx.lineTo(tx(p[0]),ty(p[1]));ctx.stroke();
+  line(0,0,.25,0,'crimson',3);ctx.fillStyle='crimson';ctx.fillText('+x forward',tx(.18),ty(.03));ctx.fillStyle='#222';ctx.fillText('x (cm)',canvas.width-55,canvas.height-8);ctx.fillText('y (cm)',10,22);
+  if(selected){{ctx.strokeStyle='black';ctx.lineWidth=3;ctx.beginPath();ctx.arc(tx(selected[0]),ty(selected[1]),8,0,2*Math.PI);ctx.stroke();}}
+}}
+draw();canvas.addEventListener('click',e=>{{const r=canvas.getBoundingClientRect(), px=(e.clientX-r.left)*canvas.width/r.width, py=(e.clientY-r.top)*canvas.height/r.height, x=minX+(px-pad)/scale, y=minY+(canvas.height-pad-py)/scale;let best=points[0],d=Infinity;for(const p of points){{const q=(p[0]-x)**2+(p[1]-y)**2;if(q<d){{d=q;best=p}}}}draw(best);readout.textContent=`Nearest reachable point: x=${{(best[0]*100).toFixed(1)}} cm, y=${{(best[1]*100).toFixed(1)}} cm, z=${{(best[2]*100).toFixed(1)}} cm`;}});
+</script>""", encoding="utf-8")
 
 
 def workspace_envelope_voxels(
@@ -620,9 +604,15 @@ def main() -> None:
         help="Sample the collision-filtered, front-of-robot gripper workspace estimate",
     )
     parser.add_argument(
-        "--workspace-matplotlib",
+        "--workspace-viewer",
         action="store_true",
-        help="Open a clickable Matplotlib top-down workspace view instead of the PyBullet OpenGL view",
+        help="Write and open a clickable browser-based top-down workspace view (no OpenGL required)",
+    )
+    parser.add_argument(
+        "--workspace-viewer-output",
+        type=Path,
+        default=Path("data/reachability/workspace_viewer.html"),
+        help="HTML file written by --workspace-viewer",
     )
     parser.add_argument(
         "--workspace-front-min-x-m",
@@ -677,8 +667,8 @@ def main() -> None:
     parser.add_argument("--save-2d", type=Path, metavar="PNG",
                         help="Save a final 2D view image (useful on headless systems)")
     args = parser.parse_args()
-    if args.workspace_matplotlib and not args.workspace:
-        parser.error("--workspace-matplotlib requires --workspace")
+    if args.workspace_viewer and not args.workspace:
+        parser.error("--workspace-viewer requires --workspace")
     if not args.urdf.exists():
         raise SystemExit(f"URDF not found: {args.urdf}")
 
@@ -706,8 +696,10 @@ def main() -> None:
             write_workspace_ply(args.workspace_output, points)
             print(json.dumps(summary, indent=2, sort_keys=True))
             print(f"wrote {len(points)} workspace points to {args.workspace_output}")
-            if args.workspace_matplotlib:
-                show_workspace_matplotlib(robot, points)
+            if args.workspace_viewer:
+                write_workspace_viewer(args.workspace_viewer_output, robot, points)
+                print(f"wrote clickable workspace viewer to {args.workspace_viewer_output}")
+                webbrowser.open(args.workspace_viewer_output.resolve().as_uri())
                 return
             if args.gui:
                 show_workspace(
