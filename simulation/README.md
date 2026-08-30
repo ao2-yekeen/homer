@@ -50,9 +50,6 @@ to select the nearest reachable point and read its `x`, `y`, and `z`
 coordinates in centimetres. In this view, `+x` is in front of the robot and
 `+y` is robot left.
 
-Controls: left-click selects a point, mouse wheel zooms around the cursor,
-right-drag pans, and `R` resets the view.
-
 Install Pygame once if it is not already present:
 
 ```bash
