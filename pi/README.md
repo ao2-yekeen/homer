@@ -36,7 +36,7 @@ LT is the arm dead-man: releasing it immediately stops arm and neck commands.
 `rgb_object_detection.py` publishes the Logitech C930e stream as
 `/rgb_camera/image_raw` and publishes a compact JSON result on
 `/rgb_camera/detection`. It is deliberately independent of the unavailable ToF
-camera. The first detector identifies the largest saturated **yellow** region
+camera. The first detector identifies the largest low-value **black** region
 on the raised platform, reporting `detected`, `confidence`, `bbox_xywh`, and
 `center_uv`; it is not a general object detector.
 

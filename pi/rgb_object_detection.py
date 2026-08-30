@@ -3,7 +3,7 @@
 
 This is the Week 2 bootstrap perception path: it deliberately has no depth
 dependency and makes no arm or base command.  Detection is a transparent HSV
-colour threshold intended for a saturated yellow first target on the raised
+colour threshold intended for a matte black first target on the raised
 platform.  It is not a general object detector.
 
 Topics:
@@ -48,7 +48,7 @@ class Detection:
         }
 
 
-def detect_yellow_object(
+def detect_coloured_object(
     frame_bgr: np.ndarray, lower_hsv: tuple[int, int, int], upper_hsv: tuple[int, int, int], min_area_px: int
 ) -> Detection:
     """Return the largest connected HSV region, or an explicit no-detection."""
@@ -79,16 +79,18 @@ class RgbObjectDetection(Node):
         self.declare_parameter("width", 640)
         self.declare_parameter("height", 480)
         self.declare_parameter("fps", 20.0)
-        self.declare_parameter("yellow_lower_hsv", [20, 100, 80])
-        self.declare_parameter("yellow_upper_hsv", [38, 255, 255])
+        # Matte black is low-value across all hues. This deliberately remains
+        # configurable because exposure and platform material affect it.
+        self.declare_parameter("object_lower_hsv", [0, 0, 0])
+        self.declare_parameter("object_upper_hsv", [179, 255, 80])
         self.declare_parameter("min_area_px", 500)
 
         get = lambda name: self.get_parameter(name).value
         self.device = str(get("device"))
         self.width, self.height = int(get("width")), int(get("height"))
         self.fps = float(get("fps"))
-        self.lower_hsv = tuple(int(value) for value in get("yellow_lower_hsv"))
-        self.upper_hsv = tuple(int(value) for value in get("yellow_upper_hsv"))
+        self.lower_hsv = tuple(int(value) for value in get("object_lower_hsv"))
+        self.upper_hsv = tuple(int(value) for value in get("object_upper_hsv"))
         self.min_area_px = int(get("min_area_px"))
         if len(self.lower_hsv) != 3 or len(self.upper_hsv) != 3 or self.min_area_px <= 0 or self.fps <= 0:
             raise ValueError("HSV bounds must have three values; min_area_px and fps must be positive")
@@ -133,7 +135,7 @@ class RgbObjectDetection(Node):
             self.capture = None
             return
         height, width = frame.shape[:2]
-        detection = detect_yellow_object(frame, self.lower_hsv, self.upper_hsv, self.min_area_px)
+        detection = detect_coloured_object(frame, self.lower_hsv, self.upper_hsv, self.min_area_px)
         image = Image()
         image.header.stamp = self.get_clock().now().to_msg()
         image.header.frame_id = "rgb_camera"
