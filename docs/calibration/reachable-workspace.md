@@ -12,6 +12,16 @@ Generate and view the model-derived point cloud:
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
 ```
 
+For a non-OpenGL top-down inspection view, with the robot represented as a
+stick figure and click-to-read centimetre coordinates, run:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --workspace-matplotlib
+```
+
+Each click selects the nearest reachable gripper-centre sample and displays its
+`x`, `y`, and `z` coordinates in centimetres. `+x` is forward and `+y` left.
+
 The green cloud contains gripper-centre positions in `base_footprint`. It is
 also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
 3D view outside PyBullet.
