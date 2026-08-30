@@ -395,17 +395,16 @@ def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) 
         state = pb.getLinkState(robot, find_link(robot, name), computeForwardKinematics=True)
         arm_xy.append((state[4][0], state[4][1]))
     width, height, padding = 960, 820, 60
-    min_x, max_x, min_y, max_y, scale = workspace_view_transform(points, width, height, padding)
-    centre_x, centre_y = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
+    min_x, _, min_y, _, scale = workspace_view_transform(points, width, height, padding)
     z_min, z_max = min(point[2] for point in points), max(point[2] for point in points)
 
     def to_screen(point: tuple[float, float]) -> tuple[int, int]:
-        return (round(width / 2.0 + (point[0] - centre_x) * scale),
-                round(height / 2.0 - (point[1] - centre_y) * scale))
+        return (round(padding + (point[0] - min_x) * scale),
+                round(height - padding - (point[1] - min_y) * scale))
 
     def to_world(pixel: tuple[int, int]) -> tuple[float, float]:
-        return ((pixel[0] - width / 2.0) / scale + centre_x,
-                (height / 2.0 - pixel[1]) / scale + centre_y)
+        return ((pixel[0] - padding) / scale + min_x,
+                (height - padding - pixel[1]) / scale + min_y)
 
     def colour_for_height(z_m: float) -> tuple[int, int, int]:
         fraction = 0.5 if z_max == z_min else (z_m - z_min) / (z_max - z_min)
@@ -416,7 +415,7 @@ def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) 
     screen = pygame.display.set_mode((width, height))
     pygame.display.set_caption("Homer usable workspace — click for centimetre coordinates")
     font, small_font = pygame.font.Font(None, 27), pygame.font.Font(None, 20)
-    clock, selected, panning = pygame.time.Clock(), None, False
+    clock, selected = pygame.time.Clock(), None
     running = True
     while running:
         for event in pygame.event.get():
@@ -424,33 +423,14 @@ def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) 
                 running = False
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 selected = nearest_workspace_point(points, *to_world(event.pos))
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 3:
-                panning = True
-            elif event.type == pygame.MOUSEBUTTONUP and event.button == 3:
-                panning = False
-            elif event.type == pygame.MOUSEMOTION and panning:
-                centre_x -= event.rel[0] / scale
-                centre_y += event.rel[1] / scale
-            elif event.type == pygame.MOUSEWHEEL:
-                cursor = pygame.mouse.get_pos()
-                world_before_zoom = to_world(cursor)
-                scale = max(250.0, min(8000.0, scale * (1.25 ** event.y)))
-                world_after_zoom = to_world(cursor)
-                centre_x += world_before_zoom[0] - world_after_zoom[0]
-                centre_y += world_before_zoom[1] - world_after_zoom[1]
-            elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
-                min_x, max_x, min_y, max_y, scale = workspace_view_transform(points, width, height, padding)
-                centre_x, centre_y = (min_x + max_x) / 2.0, (min_y + max_y) / 2.0
 
         screen.fill((250, 250, 250))
-        view_min_x, view_max_x = centre_x - width / (2 * scale), centre_x + width / (2 * scale)
-        view_min_y, view_max_y = centre_y - height / (2 * scale), centre_y + height / (2 * scale)
-        for centimetres in range(math.floor(view_min_x * 10) * 10, math.ceil(view_max_x * 10) * 10 + 1, 10):
+        for centimetres in range(-40, 61, 10):
             coordinate = centimetres / 100.0
-            pygame.draw.line(screen, (225, 229, 232), to_screen((coordinate, view_min_y)),
-                             to_screen((coordinate, view_max_y)))
-            pygame.draw.line(screen, (225, 229, 232), to_screen((view_min_x, coordinate)),
-                             to_screen((view_max_x, coordinate)))
+            pygame.draw.line(screen, (225, 229, 232), to_screen((coordinate, min_y)),
+                             to_screen((coordinate, min_y + (height - 2 * padding) / scale)))
+            pygame.draw.line(screen, (225, 229, 232), to_screen((min_x, coordinate)),
+                             to_screen((min_x + (width - 2 * padding) / scale, coordinate)))
         pygame.draw.rect(screen, (48, 48, 48), (*to_screen((-0.15, 0.1425)), round(0.30 * scale), round(0.285 * scale)))
         pygame.draw.rect(screen, (174, 182, 191), (*to_screen((-0.065, 0.020)), round(0.040 * scale), round(0.040 * scale)))
         for point in points:
@@ -460,8 +440,8 @@ def show_workspace_pygame(robot: int, points: list[tuple[float, float, float]]) 
             pygame.draw.circle(screen, (255, 127, 14), to_screen(point), 5)
         pygame.draw.line(screen, (190, 20, 35), to_screen((0.0, 0.0)), to_screen((0.25, 0.0)), 3)
         screen.blit(font.render("+x forward", True, (190, 20, 35)), to_screen((0.16, 0.03)))
-        screen.blit(font.render("Left-click: select point | Wheel: zoom | Right-drag: pan | R: reset", True, (20, 25, 30)), (20, 15))
-        screen.blit(small_font.render("Blue = low height; red = high height. Orange = neutral stick arm.", True, (50, 55, 60)), (20, 42))
+        screen.blit(font.render("Click a coloured point for coordinates in cm", True, (20, 25, 30)), (20, 15))
+        screen.blit(small_font.render("Blue = low height; red = high height.  Orange = neutral stick arm.", True, (50, 55, 60)), (20, 42))
         if selected is not None:
             pygame.draw.circle(screen, (0, 0, 0), to_screen((selected[0], selected[1])), 10, width=3)
             label = f"x={selected[0] * 100:+.1f} cm, y={selected[1] * 100:+.1f} cm, z={selected[2] * 100:+.1f} cm"
