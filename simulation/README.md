@@ -38,11 +38,11 @@ also writes the underlying gripper-centre point cloud to
 `data/reachability/urdf_workspace.ply`; open it in MeshLab or CloudCompare if
 a standalone view is useful.
 
-For a simpler interactive inspection view that does not use the PyBullet/OpenGL
-window or any extra Python package, use the browser viewer:
+For a simpler inspection view that does not use the PyBullet/OpenGL window,
+use Matplotlib instead:
 
 ```bash
-python3 simulation/pybullet_sim.py --workspace --workspace-viewer
+python3 simulation/pybullet_sim.py --workspace --workspace-matplotlib
 ```
 
 It shows the robot as a top-down stick drawing. Click anywhere in the workspace
