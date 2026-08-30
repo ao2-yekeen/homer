@@ -12,12 +12,14 @@ Generate and view the model-derived point cloud:
 python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
 ```
 
-The green cloud contains gripper-centre positions in `base_footprint`. It is
-also exported as `data/reachability/urdf_workspace.ply` for a full-resolution
-3D view outside PyBullet.
+The display shows the workspace envelope around the robot: blue is lowest and
+red is highest. The underlying gripper-centre point cloud is exported as
+`data/reachability/urdf_workspace.ply` for a full-resolution view outside
+PyBullet.
 
-Use the **Camera yaw (turn around)**, pitch, zoom, and look-at sliders in the
-PyBullet right-hand panel. PyBullet mouse controls remain available too.
+Use the right-hand PyBullet panel to navigate. **Camera yaw (turn around)**
+rotates around the robot; pitch, zoom, and look-at x/y/z adjust the angle,
+distance, and target. Standard PyBullet mouse controls remain available.
 
 ## Reference frame
 

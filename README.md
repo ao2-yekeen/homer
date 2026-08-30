@@ -1,9 +1,9 @@
 # Homer mobile manipulator
 
-Homer is an experimental mobile manipulator built around an ESP32, a Raspberry
-Pi, ROS 2 Jazzy, differential drive, an SO-ARM 101, and an RPLIDAR A1. This
-repository contains the firmware, Pi-side ROS integration, operator controls,
-and a lightweight simulation in one place.
+Homer is a custom mobile manipulator built around an ESP32, Raspberry Pi,
+ROS 2 Jazzy, differential-drive base, SO-ARM 101, and RPLIDAR A1. This
+repository contains the firmware, Raspberry Pi integration, operator controls,
+calibration material, and PyBullet simulation for that robot.
 
 > **Hardware safety:** do not enable motion from a fresh checkout. Test with
 > the drive wheels lifted, the arm supported, and an accessible emergency power
@@ -20,17 +20,17 @@ and a lightweight simulation in one place.
 | Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
 | Operator controls | control map and pre-motion checks | [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md) |
 
-## Repository status
+## Status and safety
 
-The software is an integration project for a specific physical robot, not a
-general-purpose robot distribution. Hardware calibration, controller mapping,
-and USB device names must be verified on the target system before deployment.
-The drive calibration values in firmware and the SO-ARM EEPROM travel limits
-are robot-specific.
+This is an integration project for one physical robot, not a general-purpose
+robot distribution. Hardware calibration, controller mappings, serial-device
+names, and wiring must be checked on the target robot before deployment. Drive
+calibration and SO-ARM EEPROM travel limits are robot-specific.
 
-Use `main` for the current integrated code. The remote `simulation-sync`
-branch was merged into `main` and has no remaining unique commits; it can be
-deleted once its history is no longer needed.
+The reachable-workspace visualisation is a model-derived planning aid. It is
+not a motion command or a proof that a physical move is safe. Its physical
+platform, clearance, and servo-to-URDF calibration checks must be completed
+before it is used for motion decisions.
 
 ## Quick start
 
@@ -45,6 +45,21 @@ python3 simulation/pybullet_sim.py --seconds 20
 
 Use `--gui`, `--2d`, `--2d-live`, or `--2d-gui` for visual modes. See the
 [simulation guide](simulation/README.md) for dependencies and options.
+
+### Inspect the arm workspace
+
+The workspace view samples the calibrated URDF, excludes points behind the
+robot, and rejects configurations colliding with the modelled mast, base,
+arm mount, or neck:
+
+```bash
+python3 simulation/pybullet_sim.py --workspace --gui --seconds 60
+```
+
+Use the PyBullet right-panel camera controls, especially **Camera yaw (turn
+around)**, to inspect all sides of the model. For assumptions, limitations,
+and the required physical validation procedure, see
+[reachable-workspace characterisation](docs/calibration/reachable-workspace.md).
 
 ### Build ESP32 firmware
 
@@ -93,7 +108,6 @@ on the robot with motion inhibited before attempting a lifted-wheel test.
 
 - [Gamepad controls and safety checks](docs/gamepad-control-map.md)
 - [Reachable-workspace characterisation](docs/calibration/reachable-workspace.md)
-- [URDF workspace visualisation](simulation/README.md#visualise-the-calibrated-arm-workspace)
 - [Raspberry Pi runtime](pi/README.md)
 - [Gamepad coordinator](pi/robot_teleop/README.md)
 - [Simulation](simulation/README.md)
