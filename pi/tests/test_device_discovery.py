@@ -35,3 +35,12 @@ def test_discover_rejects_missing_lidar(monkeypatch):
 
     with pytest.raises(device_discovery.DiscoveryError, match="exactly one RPLIDAR"):
         device_discovery.discover("/dev/v4l/by-id/camera", ["/dev/ttyUSB0", "/dev/ttyUSB1"], 1)
+
+
+def test_write_json_creates_readable_role_routes(tmp_path):
+    routes = tmp_path / "mobile-robot" / "device-routes.json"
+    devices = {"lidar": "/dev/ttyUSB7", "esp32": "/dev/ttyUSB4"}
+
+    device_discovery.write_json(routes, devices)
+
+    assert routes.read_text() == '{\n  "esp32": "/dev/ttyUSB4",\n  "lidar": "/dev/ttyUSB7"\n}\n'

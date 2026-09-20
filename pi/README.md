@@ -61,7 +61,8 @@ colour under the actual platform lighting before relying on its output.
 The ESP32 and RPLIDAR use identical CP2102 bridges, so neither `/dev/ttyUSBn`
 nor the bridge serial number identifies their role. `device-discovery.service`
 identifies the RPLIDAR with its native `GET_INFO` request and assigns the one
-remaining CP2102 bridge to the ESP32 at each startup. It writes user-runtime links for
+remaining CP2102 bridge to the ESP32 at each startup. It writes the final mapping to
+`~/.config/mobile-robot/device-routes.json` and user-runtime links for
 `esp32`, `lidar`, and `rgb_camera`; the agent, LiDAR, and RGB services depend
 on it. Connection order is therefore irrelevant.
 
@@ -77,7 +78,7 @@ systemctl --user enable device-discovery.service micro-ros-agent.service \
   rplidar.service rgb-object-detection.service
 systemctl --user restart device-discovery.service micro-ros-agent.service \
   rplidar.service rgb-object-detection.service
-cat "${XDG_RUNTIME_DIR}/mobile-robot-devices/devices.json"
+cat ~/.config/mobile-robot/device-routes.json
 ```
 
 `REQUIRES_HARDWARE_TEST`: after any cable or hub change, confirm one `/scan`

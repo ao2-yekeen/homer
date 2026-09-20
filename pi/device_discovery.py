@@ -3,10 +3,11 @@
 
 The ESP32 and RPLIDAR both use indistinguishable CP2102 USB bridges.  USB
 paths, ttyUSB numbers, and the bridge serial string therefore cannot identify
-them reliably after a cable or hub change.  This helper probes each candidate:
-``esptool chip_id`` identifies the ESP32 and the RPLIDAR GET_INFO command
-identifies the scanner.  It then creates per-user runtime links consumed by
-the ROS services.
+them reliably after a cable or hub change. This helper identifies the
+RPLIDAR with its safe GET_INFO command; with the expected two serial devices,
+the other port is the ESP32. It records the resulting role-to-device map in a
+user-readable file and creates per-user runtime links consumed by the ROS
+services.
 
 Run it before the serial consumers start.  It deliberately makes no ROS,
 motor, or arm commands.
@@ -102,6 +103,15 @@ def discover(camera_glob: str, ports: list[str], timeout_s: float) -> dict[str, 
     return {"esp32": esp_ports[0], "lidar": lidar_port, "rgb_camera": camera[0], "lidar_serial": lidar_serial}
 
 
+def write_json(path: Path, devices: dict[str, str]) -> None:
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=path.parent, delete=False, prefix=f".{path.name}.", encoding="utf-8") as handle:
+        json.dump(devices, handle, indent=2, sort_keys=True)
+        handle.write("\n")
+        manifest = Path(handle.name)
+    manifest.replace(path)
+
+
 def write_links(runtime_dir: Path, devices: dict[str, str]) -> None:
     runtime_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
     for name in ("esp32", "lidar", "rgb_camera"):
@@ -110,16 +120,13 @@ def write_links(runtime_dir: Path, devices: dict[str, str]) -> None:
         replacement.unlink(missing_ok=True)
         replacement.symlink_to(target)
         replacement.replace(runtime_dir / name)
-    with tempfile.NamedTemporaryFile("w", dir=runtime_dir, delete=False, prefix=".devices-", encoding="utf-8") as handle:
-        json.dump(devices, handle, indent=2, sort_keys=True)
-        handle.write("\n")
-        manifest = Path(handle.name)
-    manifest.replace(runtime_dir / "devices.json")
+    write_json(runtime_dir / "devices.json", devices)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--runtime-dir", required=True, type=Path)
+    parser.add_argument("--routes-file", type=Path, help="persistent JSON file containing final role-to-device routes")
     parser.add_argument("--camera-glob", default="/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0")
     parser.add_argument("--port", action="append", dest="ports")
     parser.add_argument("--timeout", type=float, default=4.0)
@@ -128,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         devices = discover(args.camera_glob, ports, args.timeout)
         write_links(args.runtime_dir, devices)
+        if args.routes_file:
+            write_json(args.routes_file, devices)
     except (DiscoveryError, OSError) as error:
         print(f"device discovery failed: {error}", file=sys.stderr)
         return 1
