@@ -52,6 +52,45 @@ clearances, and servo-to-URDF calibration. The current robot cannot reach the
 floor from its present arm mount, so workspace and grasp tests use a raised
 rigid platform only.
 
+## ROS graph at startup
+
+The production Pi runtime starts the following graph. It separates sensor-data
+topics from command topics: observing a topic never commands hardware.
+
+```text
+Xbox gamepad
+    │
+    ▼
+/joy_node ── /joy ──► /robot_teleop
+                         ├── /teleop/cmd_vel ───────► /mobile_robot (ESP32) ──► /odom
+                         ├── /teleop/neck_angle ────► /mobile_robot (ESP32)
+                         ├── /set_autonomous ───────► /mobile_robot (ESP32)
+                         └── /soarm/command_delta_ticks ─► /soarm_bridge (when connected)
+
+RPLIDAR A1 ──► /rplidar_node ──────────────────────────────────────────────► /scan
+Logitech C930e ──► /rgb_object_detection ───────────────────► /rgb_camera/image_raw
+                                                        └────► /rgb_camera/detection
+CSI Arducam ToF ──► /tof_depth_publisher ───────────► /tof_camera/depth/image_raw
+```
+
+`/mobile_robot` also accepts `/cmd_vel` for an autonomous source, but it only
+acts on the source selected by `/set_autonomous`. It stops the base when that
+active command stream is stale. The enabled `robot-teleop.service` is the sole
+gamepad coordinator. Do **not** enable the legacy `gamepad-teleop.service` at
+the same time, because it can create a competing drive-command path.
+
+The user-level services that provide the graph are `device-discovery`,
+`gamepad-joy`, `robot-teleop`, `micro-ros-agent`, `rplidar`,
+`rgb-object-detection`, and `tof-depth-publisher`. `soarm-bridge` is optional:
+it is enabled for startup but cannot subscribe until the physical SO-ARM is
+connected. Confirm the actual graph after a boot with:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 node list
+ros2 topic list
+```
+
 ## Quick start
 
 ### Visual preview
