@@ -56,6 +56,24 @@ The camera identity is the Logitech C930e's stable `/dev/v4l/by-id/...index0`
 path; do not substitute an arbitrary `/dev/videoN`. Confirm stream and target
 colour under the actual platform lighting before relying on its output.
 
+## CSI ToF depth camera
+
+`tof_depth_publisher.py` publishes the Arducam CSI depth sensor independently
+of the USB camera. Its `/tof_camera/depth/image_raw` messages use `32FC1` and
+contain depth in **millimetres**, with `tof_camera` as the frame ID.
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp pi/tof-depth-publisher.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now tof-depth-publisher.service
+source /opt/ros/jazzy/setup.bash
+ros2 topic echo --once /tof_camera/depth/image_raw
+```
+
+This publisher only reads CSI depth frames; it does not issue motor, arm, or
+neck commands.
+
 To test one camera tilt position, with the arm clear and emergency stop
 available, issue an explicit bounded command:
 
