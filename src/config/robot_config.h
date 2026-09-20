@@ -26,7 +26,7 @@ constexpr int kRightMotorPwmChannel = 0;
 constexpr int kLeftMotorPwmChannel = 1;
 constexpr int kMotorPwmFrequency = 5000;
 constexpr int kMotorPwmResolution = 8;
-constexpr float kLinearCommandScale = 120.0f;
+constexpr float kLinearCommandScale = 200.0f;
 constexpr float kAngularCommandScale = 60.0f;
 constexpr float kLeftDriveTrim = 1.00f;
 
