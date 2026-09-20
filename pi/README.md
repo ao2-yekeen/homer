@@ -56,6 +56,33 @@ The camera identity is the Logitech C930e's stable `/dev/v4l/by-id/...index0`
 path; do not substitute an arbitrary `/dev/videoN`. Confirm stream and target
 colour under the actual platform lighting before relying on its output.
 
+## USB role discovery
+
+The ESP32 and RPLIDAR use identical CP2102 bridges, so neither `/dev/ttyUSBn`
+nor the bridge serial number identifies their role. `device-discovery.service`
+identifies the RPLIDAR with its native `GET_INFO` request and assigns the one
+remaining CP2102 bridge to the ESP32 at each startup. It writes user-runtime links for
+`esp32`, `lidar`, and `rgb_camera`; the agent, LiDAR, and RGB services depend
+on it. Connection order is therefore irrelevant.
+
+Deploy the helper and all four units together (the old `/dev/robot-*` udev
+links are no longer used):
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp pi/device-discovery.service pi/micro-ros-agent.service pi/rplidar.service \
+   pi/rgb-object-detection.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable device-discovery.service micro-ros-agent.service \
+  rplidar.service rgb-object-detection.service
+systemctl --user restart device-discovery.service micro-ros-agent.service \
+  rplidar.service rgb-object-detection.service
+cat "${XDG_RUNTIME_DIR}/mobile-robot-devices/devices.json"
+```
+
+`REQUIRES_HARDWARE_TEST`: after any cable or hub change, confirm one `/scan`
+message, `/odom` from the ESP32, and one RGB frame before driving.
+
 To test one camera tilt position, with the arm clear and emergency stop
 available, issue an explicit bounded command:
 
@@ -107,5 +134,5 @@ systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-
 ```
 
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
-stable `/dev/robot-lidar` device link and restarts automatically if the USB
-device or driver temporarily disappears.
+protocol-discovered runtime link and restarts automatically if the USB device
+or driver temporarily disappears.

@@ -1,11 +1,14 @@
 [Unit]
 Description=Homer RGB camera stream and simple coloured-object detector
 After=network-online.target
+Requires=device-discovery.service
+After=device-discovery.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/mobile-robot
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/rgb_object_detection.py'
+ExecStartPre=/usr/bin/test -c %t/mobile-robot-devices/rgb_camera
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/rgb_object_detection.py --ros-args -p device:=%t/mobile-robot-devices/rgb_camera'
 Restart=on-failure
 RestartSec=2
 

@@ -1,0 +1,12 @@
+[Unit]
+Description=Mobile Robot protocol-based device discovery
+After=network.target
+Before=micro-ros-agent.service rplidar.service rgb-object-detection.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/mobile-robot/pi/device_discovery.py --runtime-dir %t/mobile-robot-devices
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

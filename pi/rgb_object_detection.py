@@ -75,7 +75,7 @@ def detect_coloured_object(
 class RgbObjectDetection(Node):
     def __init__(self) -> None:
         super().__init__("rgb_object_detection")
-        self.declare_parameter("device", "/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e_C1D2D6AE-video-index0")
+        self.declare_parameter("device", "/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0")
         self.declare_parameter("width", 640)
         self.declare_parameter("height", 480)
         self.declare_parameter("fps", 20.0)
