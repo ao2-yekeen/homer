@@ -118,7 +118,15 @@ Before enabling any motion, verify the ROS graph and controller input:
 source /opt/ros/jazzy/setup.bash
 ros2 topic echo /joy
 ros2 topic echo /odom --once
+ros2 topic echo /drive/status --once
 systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
+
+`/drive/status` reports the last accepted command from the ESP32:
+`linear.x` is requested forward speed, `linear.y` and `linear.z` are the left
+and right PWM register values (0–255), `angular.z` is requested turn speed,
+`angular.x` is mode (0 TELEOP, 1 AUTONOMOUS, 2 STOPPED), and `angular.y` is
+milliseconds since the last accepted command. A zero command after a timeout
+means the motor outputs have been stopped.
 ```
 
 ## Development checks

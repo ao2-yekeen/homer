@@ -28,6 +28,7 @@ class MicroRosNode {
   static void onNeck(const void* message);
   static void check(rcl_ret_t result);
   void publishOdometry(uint32_t now_ms);
+  void publishDriveStatus(uint32_t now_ms);
   void fillOdometryMessage(uint32_t now_ms);
 
   RobotController& robot_;
@@ -40,12 +41,15 @@ class MicroRosNode {
   rcl_subscription_t mode_sub_{};
   rcl_subscription_t neck_sub_{};
   rcl_publisher_t odom_pub_{};
+  rcl_publisher_t drive_status_pub_{};
   geometry_msgs__msg__Twist autonomous_message_{};
   geometry_msgs__msg__Twist teleop_message_{};
   std_msgs__msg__Bool mode_message_{};
   std_msgs__msg__Int32 neck_message_{};
   nav_msgs__msg__Odometry odom_message_{};
+  geometry_msgs__msg__Twist drive_status_message_{};
   uint32_t last_odom_publish_ms_ = 0;
+  uint32_t last_drive_status_publish_ms_ = 0;
 };
 
 }  // namespace homer

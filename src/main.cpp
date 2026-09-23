@@ -18,8 +18,8 @@ void setup() {
 }
 
 void loop() {
+  ros.spin(millis());
   const uint32_t now_ms = millis();
-  ros.spin(now_ms);
   robot.update(now_ms);
   robot.enforceSafetyTimeout(now_ms);
 }

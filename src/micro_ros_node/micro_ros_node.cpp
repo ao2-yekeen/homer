@@ -32,6 +32,9 @@ void MicroRosNode::begin() {
   check(rclc_publisher_init_default(
       &odom_pub_, &node_,
       ROSIDL_GET_MSG_TYPE_SUPPORT(nav_msgs, msg, Odometry), "odom"));
+  check(rclc_publisher_init_default(
+      &drive_status_pub_, &node_,
+      ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist), "drive/status"));
   odom_message_.header.frame_id.data = const_cast<char*>("odom");
   odom_message_.header.frame_id.size = 4;
   odom_message_.header.frame_id.capacity = 5;
@@ -54,6 +57,21 @@ void MicroRosNode::begin() {
 void MicroRosNode::spin(uint32_t now_ms) {
   rclc_executor_spin_some(&executor_, RCL_MS_TO_NS(2));
   publishOdometry(now_ms);
+  publishDriveStatus(millis());
+}
+
+void MicroRosNode::publishDriveStatus(uint32_t now_ms) {
+  if (now_ms - last_drive_status_publish_ms_ < 200) return;
+  last_drive_status_publish_ms_ = now_ms;
+  const DriveCommand command = robot_.lastDriveCommand();
+  drive_status_message_.linear.x = command.linear;
+  drive_status_message_.linear.y = ledcRead(config::kLeftMotorPwmChannel);
+  drive_status_message_.linear.z = ledcRead(config::kRightMotorPwmChannel);
+  drive_status_message_.angular.z = command.angular;
+  drive_status_message_.angular.x = static_cast<int>(robot_.mode());
+  drive_status_message_.angular.y =
+      now_ms - robot_.lastActiveCommandMs();
+  check(rcl_publish(&drive_status_pub_, &drive_status_message_, nullptr));
 }
 
 void MicroRosNode::publishOdometry(uint32_t now_ms) {

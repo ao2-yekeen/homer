@@ -23,6 +23,9 @@ class RobotController {
   void update(uint32_t now_ms);
   void enforceSafetyTimeout(uint32_t now_ms);
   const OdometryState& odometry() const { return odometry_.state(); }
+  RobotMode mode() const { return mode_; }
+  DriveCommand lastDriveCommand() const { return last_drive_command_; }
+  uint32_t lastActiveCommandMs() const { return last_active_command_ms_; }
 
  private:
   DifferentialDrive drive_;
@@ -31,6 +34,7 @@ class RobotController {
   NeckServo neck_;
   RobotMode mode_ = RobotMode::kStopped;
   uint32_t last_active_command_ms_ = 0;
+  DriveCommand last_drive_command_{};
 };
 
 }  // namespace homer

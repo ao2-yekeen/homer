@@ -33,6 +33,7 @@ class RobotTeleopNode(Node):
         self.neck_controller = NeckController(self.layout)
         self.snapshot = GamepadSnapshot()
         self.last_update = monotonic()
+        self.last_mode_publish = 0.0
 
         self.base_publisher = self.create_publisher(Twist, "/teleop/cmd_vel", 10)
         self.arm_publisher = self.create_publisher(
@@ -52,12 +53,18 @@ class RobotTeleopNode(Node):
         changed_mode = self.mode_selector.update(self.snapshot)
         if changed_mode is not None:
             self.mode_publisher.publish(Bool(data=changed_mode is RobotMode.AUTONOMOUS))
+            self.last_mode_publish = monotonic()
             self.get_logger().info(f"Mode -> {changed_mode.value.upper()}")
 
     def _publish_commands(self) -> None:
         now = monotonic()
         elapsed_seconds = min(0.1, max(0.0, now - self.last_update))
         self.last_update = now
+        if now - self.last_mode_publish >= 1.0:
+            self.mode_publisher.publish(
+                Bool(data=self.mode_selector.mode is RobotMode.AUTONOMOUS)
+            )
+            self.last_mode_publish = now
 
         base = self.base_controller.command(self.snapshot, self.mode_selector.mode)
         self.base_publisher.publish(

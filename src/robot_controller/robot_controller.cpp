@@ -22,8 +22,10 @@ void RobotController::initializeNeck(uint32_t now_ms) {
 }
 
 void RobotController::setMode(RobotMode mode, uint32_t now_ms) {
+  if (mode == mode_) return;
   mode_ = mode;
   last_active_command_ms_ = now_ms;
+  last_drive_command_ = {};
   drive_.stop();
 }
 
@@ -32,6 +34,7 @@ void RobotController::receiveDriveCommand(RobotMode source,
                                            uint32_t now_ms) {
   if (source != mode_) return;
   last_active_command_ms_ = now_ms;
+  last_drive_command_ = command;
   drive_.apply(command);
 }
 
@@ -48,7 +51,9 @@ void RobotController::enforceSafetyTimeout(uint32_t now_ms) {
   if (mode_ != RobotMode::kStopped &&
       now_ms - last_active_command_ms_ > config::kCommandTimeoutMs) {
     drive_.stop();
-    mode_ = RobotMode::kStopped;
+    last_drive_command_ = {};
+    // Keep the selected mode. A fresh dead-man command can resume after a
+    // brief transport gap, while the motor output stays off during the gap.
   }
 }
 
