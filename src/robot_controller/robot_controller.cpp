@@ -10,7 +10,10 @@ void RobotController::begin(uint32_t now_ms) {
   encoders_.begin();
   odometry_.begin(now_ms);
   drive_.begin();
-  mode_ = RobotMode::kStopped;
+  // The Pi teleop coordinator may already be in TELEOP when the ESP32
+  // reconnects after a reset. Start in that mode so its dead-man command
+  // stream is not silently discarded until the operator presses A again.
+  mode_ = RobotMode::kTeleop;
   last_active_command_ms_ = now_ms;
 }
 
