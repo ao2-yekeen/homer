@@ -33,6 +33,8 @@ class RobotTeleopNode(Node):
         self.neck_controller = NeckController(self.layout)
         self.snapshot = GamepadSnapshot()
         self.last_update = monotonic()
+        # The ESP32 owns the neck's power-on position (120 degrees).  Do not
+        # publish a second startup command from this coordinator.
 
         self.base_publisher = self.create_publisher(Twist, "/teleop/cmd_vel", 10)
         self.arm_publisher = self.create_publisher(
