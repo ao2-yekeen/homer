@@ -31,7 +31,9 @@ constexpr float kAngularCommandScale = 60.0f;
 constexpr float kLeftDriveTrim = 1.00f;
 
 constexpr uint8_t kNeckServoPin = 2;
-constexpr int kNeckServoPwmChannel = 2;
+// Keep the neck PWM on a timer pair independent of drive PWM (channels 0/1)
+// and the channel that failed to actuate in the production firmware.
+constexpr int kNeckServoPwmChannel = 4;
 constexpr int kNeckServoFrequency = 50;
 constexpr int kNeckServoResolution = 16;
 constexpr int kNeckMinimumPulseUs = 500;
