@@ -33,6 +33,10 @@ class RobotTeleopNode(Node):
         self.neck_controller = NeckController(self.layout)
         self.snapshot = GamepadSnapshot()
         self.last_update = monotonic()
+        # Send the verified forward position once the ESP32 subscriber joins.
+        # This makes the whole-system boot state explicit rather than relying
+        # only on the ESP32's local power-on initialization.
+        self._startup_neck_pending = True
 
         self.base_publisher = self.create_publisher(Twist, "/teleop/cmd_vel", 10)
         self.arm_publisher = self.create_publisher(
@@ -58,6 +62,11 @@ class RobotTeleopNode(Node):
         now = monotonic()
         elapsed_seconds = min(0.1, max(0.0, now - self.last_update))
         self.last_update = now
+
+        if self._startup_neck_pending and self.neck_publisher.get_subscription_count():
+            self.neck_publisher.publish(Int32(data=120))
+            self._startup_neck_pending = False
+            self.get_logger().info("Neck set to forward startup position (120 degrees).")
 
         base = self.base_controller.command(self.snapshot, self.mode_selector.mode)
         self.base_publisher.publish(
