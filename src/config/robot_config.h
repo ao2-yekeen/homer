@@ -26,7 +26,9 @@ constexpr int kRightMotorPwmChannel = 0;
 constexpr int kLeftMotorPwmChannel = 1;
 constexpr int kMotorPwmFrequency = 5000;
 constexpr int kMotorPwmResolution = 8;
-constexpr float kLinearCommandScale = 120.0f;
+// Full manual stick (0.7 m/s) maps to the 140/255 duty used by the
+// recorded lifted-wheel motor diagnostic. Tune against measured wheel motion.
+constexpr float kLinearCommandScale = 200.0f;
 constexpr float kAngularCommandScale = 60.0f;
 constexpr float kLeftDriveTrim = 1.00f;
 

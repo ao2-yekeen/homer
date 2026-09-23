@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build locally, then push the built binaries to the Pi and flash the ESP32
-# attached to it (over /dev/ttyUSB0) via the Pi's lightweight `esptool`.
+# selected by the Pi's device-discovery service via its lightweight `esptool`.
 # Usage: ./deploy.sh [esp32dev|servo_sweep|servo_idle|motor_diagnostic]
 set -euo pipefail
 
@@ -9,7 +9,8 @@ ENVIRONMENT="${1:-esp32dev}"
 BUILD_DIR="$PROJECT_DIR/.pio/build/$ENVIRONMENT"
 BOOT_APP0="/home/ao2-yekeen/.platformio/packages/framework-arduinoespressif32/tools/partitions/boot_app0.bin"
 REMOTE_DIR="~/esp32_fw"
-REMOTE_PORT="/dev/ttyUSB0"
+PI_UID="$(ssh pi id -u)"
+REMOTE_PORT="/run/user/$PI_UID/mobile-robot-devices/esp32"
 # This conservative default is fast while leaving margin for the Pi's CP2102
 # bridge.  The value can be overridden for diagnostics with ESP32_FLASH_BAUD.
 FLASH_BAUD="${ESP32_FLASH_BAUD:-115200}"
@@ -27,8 +28,17 @@ scp -q \
   "$BOOT_APP0" \
   "pi:$REMOTE_DIR/"
 
+RESTORE_AGENT=1
+restore_agent() {
+  if [ "$ENVIRONMENT" = "esp32dev" ] && [ "$RESTORE_AGENT" = 1 ]; then
+    ssh pi "systemctl --user start micro-ros-agent.service" || true
+  fi
+}
+trap restore_agent EXIT
+
 echo "==> Releasing $REMOTE_PORT (stopping micro-ros-agent)"
 ssh pi "set -e
+  test -c $REMOTE_PORT
   systemctl --user stop micro-ros-agent.service
   for attempt in {1..10}; do
     if ! fuser -s $REMOTE_PORT; then
@@ -39,6 +49,9 @@ ssh pi "set -e
   echo 'ERROR: $REMOTE_PORT is still in use after stopping micro-ros-agent.' >&2
   fuser -v $REMOTE_PORT >&2 || true
   exit 1"
+
+echo "==> Confirming the discovered port is an ESP32"
+ssh pi "esptool --chip esp32 --port $REMOTE_PORT --baud 115200 --no-stub --after hard_reset chip_id"
 
 echo "==> Flashing ESP32 over $REMOTE_PORT"
 # --no-stub: the apt `esptool` package (+dfsg) ships without the precompiled
@@ -54,6 +67,7 @@ ssh pi "esptool --chip esp32 --port $REMOTE_PORT --baud $FLASH_BAUD --no-stub \
 if [ "$ENVIRONMENT" = "esp32dev" ]; then
   echo "==> Reclaiming $REMOTE_PORT (restarting micro-ros-agent)"
   ssh pi "systemctl --user start micro-ros-agent"
+  RESTORE_AGENT=0
 else
   echo "==> Leaving micro-ros-agent stopped for the servo-only test"
 fi
