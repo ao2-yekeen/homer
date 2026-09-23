@@ -30,14 +30,7 @@ void RobotController::setMode(RobotMode mode, uint32_t now_ms) {
 void RobotController::receiveDriveCommand(RobotMode source,
                                            const DriveCommand& command,
                                            uint32_t now_ms) {
-  // A live teleop stream is an explicit operator takeover.  Accept it even
-  // if the Pi's mode message arrived before an ESP32 reconnect; otherwise a
-  // stale AUTONOMOUS state silently discards every gamepad command.
-  if (source == RobotMode::kTeleop && mode_ != RobotMode::kTeleop) {
-    mode_ = RobotMode::kTeleop;
-  } else if (source != mode_) {
-    return;
-  }
+  if (source != mode_) return;
   last_active_command_ms_ = now_ms;
   drive_.apply(command);
 }
