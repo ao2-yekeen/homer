@@ -108,7 +108,11 @@ class BaseCommand:
 @dataclass
 class BaseController:
     layout: GamepadLayout
-    deadzone: float = 0.08
+    linear_deadzone: float = 0.08
+    # The live controller trace reached 0.227 on the horizontal axis while the
+    # operator pushed straight forward. Ignore that cross-axis stick drift so
+    # a forward command does not also command a turn.
+    angular_deadzone: float = 0.25
     max_linear: float = 0.7
     max_angular: float = 0.4
 
@@ -118,8 +122,12 @@ class BaseController:
         ):
             return BaseCommand()
         return BaseCommand(
-            linear=axis_value(snapshot.axes, self.layout.base_linear, self.deadzone) * self.max_linear,
-            angular=axis_value(snapshot.axes, self.layout.base_angular, self.deadzone) * self.max_angular,
+            linear=axis_value(
+                snapshot.axes, self.layout.base_linear, self.linear_deadzone
+            ) * self.max_linear,
+            angular=axis_value(
+                snapshot.axes, self.layout.base_angular, self.angular_deadzone
+            ) * self.max_angular,
         )
 
 

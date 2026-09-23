@@ -23,6 +23,13 @@ class ControlModelTests(unittest.TestCase):
         active = GamepadSnapshot((1.0, 1.0), (0, 0, 0, 0, 1))
         self.assertGreater(controller.command(active, RobotMode.TELEOP).linear, 0.0)
 
+    def test_base_ignores_observed_cross_axis_drift_during_forward_motion(self) -> None:
+        controller = BaseController(self.layout)
+        forward_with_drift = GamepadSnapshot((0.227, 1.0), (0, 0, 0, 0, 1))
+        command = controller.command(forward_with_drift, RobotMode.TELEOP)
+        self.assertEqual(command.linear, controller.max_linear)
+        self.assertEqual(command.angular, 0.0)
+
     def test_arm_is_stopped_without_teleop_or_arm_deadman(self) -> None:
         controller = ArmController(self.layout, ticks_per_second=10.0)
         snapshot = GamepadSnapshot((1.0,) * 8, (0,) * 8)
