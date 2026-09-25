@@ -22,6 +22,7 @@ void RobotController::initializeNeck(uint32_t now_ms) {
 }
 
 void RobotController::setMode(RobotMode mode, uint32_t now_ms) {
+  if (mode_override_) return;
   if (mode == mode_) return;
   mode_ = mode;
   last_active_command_ms_ = now_ms;
@@ -29,10 +30,33 @@ void RobotController::setMode(RobotMode mode, uint32_t now_ms) {
   drive_.stop();
 }
 
+void RobotController::setModeOverride(RobotMode mode, uint32_t now_ms) {
+  mode_override_ = true;
+  if (mode == mode_) return;
+  mode_ = mode;
+  last_active_command_ms_ = now_ms;
+  last_drive_command_ = {};
+  drive_.stop();
+}
+
+void RobotController::clearModeOverride(uint32_t now_ms) {
+  mode_override_ = false;
+  setMode(RobotMode::kTeleop, now_ms);
+}
+
 void RobotController::receiveDriveCommand(RobotMode source,
                                            const DriveCommand& command,
                                            uint32_t now_ms) {
+  if (mode_override_) return;
   if (source != mode_) return;
+  last_active_command_ms_ = now_ms;
+  last_drive_command_ = command;
+  drive_.apply(command);
+}
+
+void RobotController::receiveOverrideDriveCommand(const DriveCommand& command,
+                                                   uint32_t now_ms) {
+  if (!mode_override_ || mode_ == RobotMode::kStopped) return;
   last_active_command_ms_ = now_ms;
   last_drive_command_ = command;
   drive_.apply(command);

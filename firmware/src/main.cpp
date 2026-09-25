@@ -1,14 +1,10 @@
-#include <Arduino.h>
-
 #include "micro_ros_node/micro_ros_node.h"
 #include "robot_controller/robot_controller.h"
 
 namespace {
-
 homer::RobotController robot;
 homer::MicroRosNode ros(robot);
-
-}  // namespace
+}
 
 void setup() {
   const uint32_t now_ms = millis();

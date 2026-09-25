@@ -25,6 +25,7 @@ class MicroRosNode {
   static void onAutonomousCommand(const void* message);
   static void onTeleopCommand(const void* message);
   static void onMode(const void* message);
+  static void onModeOverride(const void* message);
   static void onNeck(const void* message);
   static void check(rcl_ret_t result);
   void publishOdometry(uint32_t now_ms);
@@ -39,12 +40,14 @@ class MicroRosNode {
   rcl_subscription_t autonomous_sub_{};
   rcl_subscription_t teleop_sub_{};
   rcl_subscription_t mode_sub_{};
+  rcl_subscription_t mode_override_sub_{};
   rcl_subscription_t neck_sub_{};
   rcl_publisher_t odom_pub_{};
   rcl_publisher_t drive_status_pub_{};
   geometry_msgs__msg__Twist autonomous_message_{};
   geometry_msgs__msg__Twist teleop_message_{};
   std_msgs__msg__Bool mode_message_{};
+  std_msgs__msg__Int32 mode_override_message_{};
   std_msgs__msg__Int32 neck_message_{};
   nav_msgs__msg__Odometry odom_message_{};
   geometry_msgs__msg__Twist drive_status_message_{};

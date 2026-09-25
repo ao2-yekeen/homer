@@ -32,7 +32,7 @@ physical test has actually been performed and recorded.
 
 | Area | Purpose | Starting point |
 | --- | --- | --- |
-| ESP32 firmware | micro-ROS node, drive control, encoders, odometry, neck servo | [`src/`](src/) |
+| ESP32 firmware | micro-ROS node, drive control, encoders, odometry, neck servo | [`firmware/`](firmware/) |
 | Raspberry Pi runtime | systemd units, micro-ROS agent, SO-ARM bridge, LiDAR support | [`pi/`](pi/) |
 | Gamepad coordinator | dead-man controls and ROS command translation | [`pi/robot_teleop/`](pi/robot_teleop/) |
 | Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
@@ -91,20 +91,64 @@ and the required physical validation procedure, see
 
 ### Build ESP32 firmware
 
-Install PlatformIO, connect the intended ESP32, and build the production image:
-
-```bash
-python3 -m platformio run -e esp32dev
-```
-
-The diagnostic environments (`servo_sweep`, `servo_idle`, and
-`motor_diagnostic`) intentionally bypass parts of the production runtime. Use
+The ESP32 is built with Arduino CLI and remains a native micro-ROS Jazzy node.
+The `esp32dev` production image provides drive-mode selection, encoder
+odometry, neck control, drive status, and a one-second command safety timeout.
+Standalone diagnostic targets deliberately bypass parts of that runtime; use
 them only with the matching physical checks and safety setup.
 
-[`deploy.sh`](deploy.sh) builds locally and flashes the ESP32 attached to the
-Pi over `/dev/ttyUSB0`. It stops the user-level micro-ROS agent while the port
-is in use and restarts it only for the production image. Review the script and
-confirm the serial device before running it.
+1. Install [Arduino CLI](https://arduino.github.io/arduino-cli/) and ensure it
+   is available on your `PATH`:
+
+   ```bash
+   arduino-cli version
+   ```
+
+2. From the repository root, install the pinned ESP32 core, Python `pyserial`
+   build dependency, and micro-ROS Arduino library. The first run downloads
+   the toolchain and may take a few minutes:
+
+   ```bash
+   ./bootstrap-arduino-cli.sh
+   ```
+
+3. Build the production firmware:
+
+   ```bash
+   ./build.sh esp32dev
+   ```
+
+   The flashable images are written to `build/esp32dev/`:
+
+   ```text
+   firmware.ino.bin
+   firmware.ino.bootloader.bin
+   firmware.ino.partitions.bin
+   ```
+
+The project pins Arduino-ESP32 2.0.2 because the Jazzy micro-ROS Arduino
+library is precompiled for that ESP32 core. Build the standalone diagnostics
+with one of these commands:
+
+```bash
+./build.sh servo_sweep
+./build.sh servo_idle
+./build.sh motor_diagnostic
+```
+
+These targets intentionally bypass parts of the full runtime. Use them
+only with the matching physical checks and safety setup.
+
+To build and flash the ESP32 connected to the Pi's discovered serial port:
+
+```bash
+./deploy.sh esp32dev
+```
+
+[`deploy.sh`](deploy.sh) builds locally and flashes the ESP32 selected by the
+Pi's device-discovery service. It stops the user-level micro-ROS agent while
+the port is in use and restarts it for the `esp32dev` image. Review the
+script and confirm the discovered serial device before running it.
 
 ### Prepare the Pi runtime
 
@@ -112,22 +156,69 @@ The Pi services and their verification commands are documented in the
 [Pi runtime guide](pi/README.md). The gamepad coordinator has its own
 [installation and mapping guide](pi/robot_teleop/README.md).
 
-Before enabling any motion, verify the ROS graph and controller input:
+With the production image, verify that the ESP32 ROS interfaces are available:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-ros2 topic echo /joy
-ros2 topic echo /odom --once
-ros2 topic echo /drive/status --once
-systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
-
-`/drive/status` reports the last accepted command from the ESP32:
-`linear.x` is requested forward speed, `linear.y` and `linear.z` are the left
-and right PWM register values (0–255), `angular.z` is requested turn speed,
-`angular.x` is mode (0 TELEOP, 1 AUTONOMOUS, 2 STOPPED), and `angular.y` is
-milliseconds since the last accepted command. A zero command after a timeout
-means the motor outputs have been stopped.
+systemctl --user is-active micro-ros-agent.service
+ros2 topic list | grep -E '^/(cmd_vel|teleop/cmd_vel|odom|drive/status)$'
 ```
+
+The production image publishes `/odom` and `/drive/status`, and subscribes to
+`/cmd_vel`, `/teleop/cmd_vel`, `/set_autonomous`, `/mode_override`, and
+`/teleop/neck_angle`.
+
+### ROS topic graph
+
+```mermaid
+flowchart LR
+  joy_node[gamepad-joy] -->|/joy| teleop[robot-teleop]
+  teleop -->|/teleop/cmd_vel\nTELEOP only| esp32[ESP32 mobile_robot]
+  teleop -->|/set_autonomous| esp32
+  teleop -->|/teleop/neck_angle| esp32
+  autonomous[Autonomous ROS node] -->|/cmd_vel\nAUTONOMOUS only| esp32
+  terminal[Terminal operator] -->|/mode_override| esp32
+  terminal -->|/cmd_vel\noverride control| esp32
+  esp32 -->|/odom\nbest effort| ros[ROS graph]
+  esp32 -->|/drive/status\nbest effort| ros
+  teleop -->|/soarm/command_delta_ticks| arm[soarm-bridge]
+```
+
+Normal routing selects `/teleop/cmd_vel` when `/set_autonomous` is `false`,
+and `/cmd_vel` when it is `true`. Terminal override changes that routing as
+described below.
+
+### Terminal drive override
+
+`/mode_override` is the highest-priority drive-mode gate. It is intended for
+direct terminal control and prevents `/set_autonomous` from changing the
+selected mode while active. Its `std_msgs/msg/Int32` values are:
+
+| Value | Meaning |
+| --- | --- |
+| `0` | Enable override and show TELEOP mode. |
+| `1` | Enable override and show AUTONOMOUS mode. |
+| `2` | Enable override in STOPPED mode; wheel commands are rejected. |
+| Negative (normally `-1`) | Clear override and return to TELEOP mode. |
+
+With override set to `0` or `1`, only `/cmd_vel` is accepted for wheel
+commands; `/teleop/cmd_vel` is ignored. The Pi coordinator can therefore keep
+publishing its mode selection without taking over the terminal command stream.
+Always publish a zero command before clearing override:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+ros2 topic pub --once /mode_override std_msgs/msg/Int32 '{data: 0}'
+ros2 topic pub -r 10 /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.7}, angular: {z: 0.0}}'
+# Stop the publisher with Ctrl-C, then explicitly stop and release override.
+ros2 topic pub --once /cmd_vel geometry_msgs/msg/Twist \
+  '{linear: {x: 0.0}, angular: {z: 0.0}}'
+ros2 topic pub --once /mode_override std_msgs/msg/Int32 '{data: -1}'
+```
+
+After release, the firmware initially selects TELEOP, but the running Pi
+coordinator may select AUTONOMOUS again on its next mode heartbeat.
 
 ## Development checks
 
@@ -144,7 +235,7 @@ on the robot with motion inhibited before attempting a lifted-wheel test.
 
 | Path | Contents |
 | --- | --- |
-| `src/` | ESP32 firmware for the base, encoders, odometry, neck servo, and micro-ROS |
+| `firmware/` | Arduino CLI sketch and ESP32 firmware for the base, encoders, odometry, neck servo, and micro-ROS |
 | `pi/` | Raspberry Pi services, ROS bridges, diagnostics, and tests |
 | `simulation/` | PyBullet robot model and workspace/LiDAR simulation |
 | `config/` | Measured or pending calibration values; `null` means not measured |

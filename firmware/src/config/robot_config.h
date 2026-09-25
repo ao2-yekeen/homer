@@ -4,7 +4,8 @@
 
 namespace homer::config {
 
-constexpr uint32_t kMicroRosBaud = 921600;
+// micro_ros_arduino's precompiled ESP32 serial transport uses 115200 baud.
+constexpr uint32_t kMicroRosBaud = 115200;
 constexpr uint32_t kCommandTimeoutMs = 1000;
 constexpr uint32_t kOdometryPeriodMs = 50;
 
