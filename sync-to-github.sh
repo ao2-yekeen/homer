@@ -3,7 +3,7 @@
 # locally, and push. No-ops (no commit/push) if nothing changed.
 set -euo pipefail
 
-REPO_DIR="/home/ao2-yekeen/PlatformIO/Projects/esp32_robot_bt"
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_DIR"
 
 timeout 8 ssh -o ConnectTimeout=4 pi "cat ~/.config/systemd/user/micro-ros-agent.service" \

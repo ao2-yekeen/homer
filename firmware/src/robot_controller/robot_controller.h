@@ -17,8 +17,12 @@ class RobotController {
   void begin(uint32_t now_ms);
   void initializeNeck(uint32_t now_ms);
   void setMode(RobotMode mode, uint32_t now_ms);
+  void setModeOverride(RobotMode mode, uint32_t now_ms);
+  void clearModeOverride(uint32_t now_ms);
   void receiveDriveCommand(RobotMode source, const DriveCommand& command,
                            uint32_t now_ms);
+  void receiveOverrideDriveCommand(const DriveCommand& command,
+                                   uint32_t now_ms);
   void setNeckAngle(int angle);
   void update(uint32_t now_ms);
   void enforceSafetyTimeout(uint32_t now_ms);
@@ -33,6 +37,7 @@ class RobotController {
   Odometry odometry_;
   NeckServo neck_;
   RobotMode mode_ = RobotMode::kStopped;
+  bool mode_override_ = false;
   uint32_t last_active_command_ms_ = 0;
   DriveCommand last_drive_command_{};
 };
