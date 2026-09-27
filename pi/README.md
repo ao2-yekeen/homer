@@ -1,55 +1,83 @@
 # Raspberry Pi runtime
 
+For the service and ROS data-flow diagrams, see the
+[system architecture README](../docs/architecture/README.md). This page covers
+installation, hardware paths, and runtime checks.
+
 ## Automatic startup
 
 The Pi user has systemd lingering enabled, so enabled user services start
 without a login. Apply the tracked boot units with
 `./pi/install-boot-services.sh` from the repository root. It enables the
-ESP32 serial bridge, LiDAR, RGB camera, gamepad, teleop coordinator, ToF
-publisher, device discovery, and an SO-ARM device watcher. It disables the
-old micro-ROS Agent and direct gamepad teleop service so they cannot compete
-for the same serial port or command topics.
+ESP32 serial bridge, LiDAR, scan watchdog, RGB camera (on a fresh install),
+gamepad, teleop coordinator, ToF publisher, device discovery, and an SO-ARM
+device watcher. It preserves an RGB service that was already disabled. It
+disables the old micro-ROS Agent and direct gamepad teleop service so they
+cannot compete for the same serial port or command topics.
 
 The SO-ARM watcher starts its bridge only when `/dev/robot-soarm` exists.
-LiDAR startup checks the previously identified port and recreates its runtime
-link when the sensor responds. An unplugged arm or late LiDAR does not prevent
-the ESP32 bridge from starting. Check boot state with:
+Check boot state with:
 
 ```bash
 systemctl --user is-enabled esp32-serial-bridge.service rplidar.service \
+  lidar-scan-watchdog.service \
   rgb-object-detection.service soarm-bridge.path gamepad-joy.service \
   robot-teleop.service tof-depth-publisher.service
 systemctl --user is-active esp32-serial-bridge.service rplidar.service \
+  lidar-scan-watchdog.service \
   rgb-object-detection.service soarm-bridge.path
 ```
 
+## Device identities and USB safety
+
+[`device_paths.py`](device_paths.py) defines this Pi's three fixed device
+locations:
+
+| Device | Constant | Path |
+| --- | --- | --- |
+| RPLIDAR A1 | `LIDAR_PORT` | `/dev/serial/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.1:1.0-port0` |
+| ESP32 | `ESP32_PORT` | `/dev/serial/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.2.3:1.0-port0` |
+| Logitech C930e | `RGB_CAMERA` | `/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0` |
+
+Both CP2102 adapters report the same serial number (`0001`), so `by-id` is
+ambiguous and `ttyUSB` numbering is unstable. Keep LiDAR on physical USB path
+`1.1` and ESP32 on `1.2.3`. The old ESP32 bridge searched every serial port
+and opened the LiDAR, stopping its motor. The bridge now uses **only** its
+fixed path. `device_discovery.py` and `wait_for_lidar.py` check paths without
+opening serial ports; they create runtime links in
+`/run/user/<uid>/mobile-robot-devices/`. The old `device-routes.json` no longer
+selects serial ports.
+
+Check the mapping on the Pi without opening either port:
+
+```bash
+ls -l /dev/serial/by-path/
+readlink -f /run/user/$(id -u)/mobile-robot-devices/lidar
+readlink -f /run/user/$(id -u)/mobile-robot-devices/esp32
+```
+
+If cabling changes, identify the new sockets one device at a time, update
+`device_paths.py`, then rerun `./pi/install-boot-services.sh` when safe to
+restart services. Update `rgb-object-detection.service` too if its camera path
+changes. Other paths live in their units: SO-ARM at `/dev/robot-soarm`, gamepad
+at `/dev/input/js0`; the CSI ToF service is outside this repository.
+
+The read-only `lidar-scan-watchdog.service` starts at boot and monitors actual
+`/scan` messages. After a 60-second startup grace period, 15 seconds without
+a scan triggers an evidence snapshot; while down, it repeats at most once per
+minute. It records robot services, ROS graph, USB/serial ownership, Pi power
+and temperature, processes, and recent logs. It never opens the LiDAR port or
+restarts the motor. Snapshots are kept under
+`~/.local/state/mobile-robot/lidar-watchdog/` (newest 30 files retained). Check
+status with `systemctl --user status lidar-scan-watchdog.service` and recent
+events with `journalctl --user -u lidar-scan-watchdog.service -b`.
+
 There are two gamepad implementations in this repository. The active boot
 configuration uses the newer `robot_teleop/` coordinator and
-`robot-teleop.service`; do not enable both services at once.
-
-The active coordinator starts in Autonomous mode:
-
-| Gamepad control | Robot action |
-| --- | --- |
-| Press **A** | Select Teleop mode |
-| Press **B** | Select Autonomous mode |
-| Hold **L1** + left stick | Drive the base |
-| Hold **R1** + left stick | Shoulder pan/lift |
-| Hold **R1** + right stick | Elbow/wrist flex |
-| Hold **R1** + D-pad | Wrist roll/gripper |
-| Hold **R1** + **R2** | Neck up; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
-| Hold **R1** + **L2** | Neck down; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
-
-L1 and R1 are separate dead-man switches. Base commands are published on
-`/teleop/cmd_vel`; arm deltas use `/soarm/command_delta_ticks`; neck commands
-use `/teleop/neck_angle`; and mode selection uses `/set_autonomous`. The
-receiver indices and directions for R1, A, B, the right stick, D-pad, L2, and
-R2 still require physical verification on the target controller. In the
-current Aurora/Xbox profile, the expected trigger axes are **R2** `axis 5`
-and **L2** `axis 2`; both normally rest near `+1.0` and move towards `-1.0`
-when pressed. See
-the [active coordinator guide](robot_teleop/README.md) and the
-[full control map](../docs/gamepad-control-map.md).
+`robot-teleop.service`; do not enable both services at once. The canonical
+mapping, dead-man rules, and physical verification steps are in the
+[gamepad control map](../docs/gamepad-control-map.md). Installation details
+for the coordinator are in [its guide](robot_teleop/README.md).
 
 `gamepad_teleop.py` with `gamepad-teleop.service` is the older direct
 teleoperation path and is retained for reference/diagnostics only. Its
@@ -156,5 +184,5 @@ systemctl --user is-active esp32-serial-bridge.service robot-teleop.service game
 ```
 
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
-stable `/dev/robot-lidar` device link and restarts automatically if the USB
-device or driver temporarily disappears.
+runtime `mobile-robot-devices/lidar` link, which points to its fixed USB
+by-path location. The service restarts automatically if the driver exits.

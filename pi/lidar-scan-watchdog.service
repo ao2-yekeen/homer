@@ -1,0 +1,12 @@
+[Unit]
+Description=Read-only LiDAR scan health watchdog and evidence logger
+After=rplidar.service
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/lidar_scan_watchdog.py'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target

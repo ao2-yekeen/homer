@@ -16,7 +16,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, Int32
 
-from esp32_port import candidates, record_esp32
+from esp32_port import candidates
 from serial_protocol import Decoder, encode
 
 
@@ -136,7 +136,6 @@ class Esp32SerialBridge(Node):
         self.mode_ready = False
         self.override_active = False
         self.reconnects += 1
-        record_esp32(self.port_link, self.port_name)
         self.get_logger().info(f"ESP32 ready on {self.port_name}; boot={boot_id}; connections={self.reconnects}")
         self.link_pub.publish(Bool(data=True))
         self._send("S")
