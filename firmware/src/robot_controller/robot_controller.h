@@ -24,6 +24,7 @@ class RobotController {
   void receiveOverrideDriveCommand(const DriveCommand& command,
                                    uint32_t now_ms);
   void setNeckAngle(int angle);
+  void stopDrive();
   void update(uint32_t now_ms);
   void enforceSafetyTimeout(uint32_t now_ms);
   const OdometryState& odometry() const { return odometry_.state(); }

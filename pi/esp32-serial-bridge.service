@@ -1,0 +1,15 @@
+[Unit]
+Description=ESP32 serial ROS bridge
+After=network.target
+Wants=device-core-discovery.service
+After=device-core-discovery.service
+
+[Service]
+Type=simple
+WorkingDirectory=%h/mobile-robot/pi
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/esp32_serial_bridge.py'
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

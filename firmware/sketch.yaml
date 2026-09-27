@@ -2,10 +2,8 @@ default_profile: production
 
 profiles:
   production:
-    notes: Production ESP32 micro-ROS base controller.
+    notes: Production ESP32 serial base controller.
     fqbn: esp32:esp32:esp32:PartitionScheme=huge_app
     platforms:
       - platform: esp32:esp32 (2.0.2)
         platform_index_url: https://espressif.github.io/arduino-esp32/package_esp32_index.json
-    libraries:
-      - dir: ../.arduino/libraries/micro_ros_arduino

@@ -1,0 +1,11 @@
+[Unit]
+Description=Mobile Robot core device links (ESP32 and RGB camera)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/mobile-robot/pi/device_discovery.py --runtime-dir %t/mobile-robot-devices --routes-file %h/.config/mobile-robot/device-routes.json
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target

@@ -1,13 +1,15 @@
 [Unit]
 Description=Homer RGB camera stream and simple coloured-object detector
 After=network-online.target
+Wants=device-core-discovery.service
 
 [Service]
 Type=simple
 WorkingDirectory=%h/mobile-robot
-ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/rgb_object_detection.py'
-Restart=on-failure
-RestartSec=2
+ExecStartPre=/usr/bin/test -c /dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && exec /usr/bin/python3 %h/mobile-robot/pi/rgb_object_detection.py --ros-args -p device:=/dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0'
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=default.target

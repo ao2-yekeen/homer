@@ -26,11 +26,6 @@ if ! command -v arduino-cli >/dev/null; then
   exit 1
 fi
 
-if [ "$TARGET" = esp32dev ] && [ ! -f "$PROJECT_DIR/.arduino/libraries/micro_ros_arduino/library.properties" ]; then
-  echo "ERROR: micro-ROS library is missing. Run ./bootstrap-arduino-cli.sh first." >&2
-  exit 1
-fi
-
 OUTPUT_DIR="$PROJECT_DIR/build/$TARGET"
 mkdir -p "$OUTPUT_DIR"
 
