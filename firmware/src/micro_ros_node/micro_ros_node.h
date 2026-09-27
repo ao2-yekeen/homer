@@ -27,8 +27,10 @@ class MicroRosNode {
   static void onMode(const void* message);
   static void onModeOverride(const void* message);
   static void onNeck(const void* message);
-  static void check(rcl_ret_t result);
-  void publishOdometry(uint32_t now_ms);
+  static bool check(rcl_ret_t result);
+  bool createEntities();
+  void destroyEntities();
+  rcl_ret_t publishOdometry(uint32_t now_ms);
   void publishDriveStatus(uint32_t now_ms);
   void fillOdometryMessage(uint32_t now_ms);
 
@@ -53,6 +55,11 @@ class MicroRosNode {
   geometry_msgs__msg__Twist drive_status_message_{};
   uint32_t last_odom_publish_ms_ = 0;
   uint32_t last_drive_status_publish_ms_ = 0;
+  uint32_t last_agent_check_ms_ = 0;
+  uint8_t odom_publish_failures_ = 0;
+  bool connected_ = false;
+  bool support_initialized_ = false;
+  bool executor_initialized_ = false;
 };
 
 }  // namespace homer
