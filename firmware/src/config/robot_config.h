@@ -30,7 +30,10 @@ constexpr int kMotorPwmResolution = 8;
 // turn correction, above the 140/255 used by the lifted-wheel diagnostic.
 // Tune against measured wheel motion before treating this as calibrated speed.
 constexpr float kLinearCommandScale = 220.0f;
-constexpr float kAngularCommandScale = 60.0f;
+// Map the maximum teleop angular command (0.4) to full 8-bit motor duty.
+// The differential-drive output clamps at +/-255, so combined drive and
+// steering commands may saturate one wheel while turning.
+constexpr float kAngularCommandScale = 637.5f;
 constexpr float kLeftDriveTrim = 1.00f;
 
 constexpr uint8_t kNeckServoPin = 2;
