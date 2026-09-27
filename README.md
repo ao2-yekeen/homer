@@ -32,8 +32,8 @@ physical test has actually been performed and recorded.
 
 | Area | Purpose | Starting point |
 | --- | --- | --- |
-| ESP32 firmware | micro-ROS node, drive control, encoders, odometry, neck servo | [`firmware/`](firmware/) |
-| Raspberry Pi runtime | systemd units, micro-ROS agent, SO-ARM bridge, LiDAR support | [`pi/`](pi/) |
+| ESP32 firmware | serial link, drive control, encoders, odometry, neck servo | [`firmware/`](firmware/) |
+| Raspberry Pi runtime | serial ROS bridge, SO-ARM bridge, LiDAR support | [`pi/`](pi/) |
 | Gamepad coordinator | dead-man controls and ROS command translation | [`pi/robot_teleop/`](pi/robot_teleop/) |
 | Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
 | Operator controls | control map and pre-motion checks | [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md) |
@@ -91,7 +91,8 @@ and the required physical validation procedure, see
 
 ### Build ESP32 firmware
 
-The ESP32 is built with Arduino CLI and remains a native micro-ROS Jazzy node.
+The ESP32 is built with Arduino CLI and connects to a ROS 2 bridge on the Pi
+through a compact serial protocol.
 The `esp32dev` production image provides drive-mode selection, encoder
 odometry, neck control, drive status, and a one-second command safety timeout.
 Standalone diagnostic targets deliberately bypass parts of that runtime; use
@@ -104,8 +105,8 @@ them only with the matching physical checks and safety setup.
    arduino-cli version
    ```
 
-2. From the repository root, install the pinned ESP32 core, Python `pyserial`
-   build dependency, and micro-ROS Arduino library. The first run downloads
+2. From the repository root, install the pinned ESP32 core and Python `pyserial`
+   build dependency. The first run downloads
    the toolchain and may take a few minutes:
 
    ```bash
@@ -126,8 +127,7 @@ them only with the matching physical checks and safety setup.
    firmware.ino.partitions.bin
    ```
 
-The project pins Arduino-ESP32 2.0.2 because the Jazzy micro-ROS Arduino
-library is precompiled for that ESP32 core. Build the standalone diagnostics
+The project currently pins Arduino-ESP32 2.0.2. Build the standalone diagnostics
 with one of these commands:
 
 ```bash
@@ -145,9 +145,10 @@ To build and flash the ESP32 connected to the Pi's discovered serial port:
 ./deploy.sh esp32dev
 ```
 
-[`deploy.sh`](deploy.sh) builds locally and flashes the ESP32 selected by the
-Pi's device-discovery service. It stops the user-level micro-ROS agent while
-the port is in use and restarts it for the `esp32dev` image. Review the
+[`deploy.sh`](deploy.sh) builds locally, saves the previous image on the Pi,
+flashes the ESP32, and switches from the micro-ROS Agent to the serial ROS
+bridge. The bridge identifies the ESP32 by its HOM1 greeting and maintains
+the runtime device link. Review the
 script and confirm the discovered serial device before running it.
 
 ### Prepare the Pi runtime
@@ -160,27 +161,26 @@ With the production image, verify that the ESP32 ROS interfaces are available:
 
 ```bash
 source /opt/ros/jazzy/setup.bash
-systemctl --user is-active micro-ros-agent.service
+systemctl --user is-active esp32-serial-bridge.service
 ros2 topic list | grep -E '^/(cmd_vel|teleop/cmd_vel|odom|drive/status)$'
+ros2 topic echo /drive/link std_msgs/msg/Bool --once --qos-durability transient_local
 ```
 
-The production image publishes `/odom` and `/drive/status`, and subscribes to
-`/cmd_vel`, `/teleop/cmd_vel`, `/set_autonomous`, `/mode_override`, and
-`/teleop/neck_angle`.
+The Pi bridge publishes `/odom`, `/drive/status`, and `/drive/link`, and
+subscribes to `/cmd_vel`, `/teleop/cmd_vel`, `/set_autonomous`,
+`/mode_override`, and `/teleop/neck_angle`. The ESP32 uses a bounded HOM1
+serial protocol and retains the one-second motor command timeout.
 
 ### ROS topic graph
 
 ```mermaid
 flowchart LR
   joy_node[gamepad-joy] -->|/joy| teleop[robot-teleop]
-  teleop -->|/teleop/cmd_vel\nTELEOP only| esp32[ESP32 mobile_robot]
-  teleop -->|/set_autonomous| esp32
-  teleop -->|/teleop/neck_angle| esp32
-  autonomous[Autonomous ROS node] -->|/cmd_vel\nAUTONOMOUS only| esp32
-  terminal[Terminal operator] -->|/mode_override| esp32
-  terminal -->|/cmd_vel\noverride control| esp32
-  esp32 -->|/odom\nbest effort| ros[ROS graph]
-  esp32 -->|/drive/status\nbest effort| ros
+  teleop -->|/teleop/cmd_vel\n/set_autonomous\n/teleop/neck_angle| bridge[Pi serial bridge]
+  autonomous[Autonomous ROS node] -->|/cmd_vel| bridge
+  terminal[Terminal operator] -->|/mode_override| bridge
+  bridge <-->|HOM1 serial| esp32[ESP32 controller]
+  bridge -->|/odom reliable\n/drive/status best effort\n/drive/link| ros[ROS graph]
   teleop -->|/soarm/command_delta_ticks| arm[soarm-bridge]
 ```
 
@@ -235,7 +235,7 @@ on the robot with motion inhibited before attempting a lifted-wheel test.
 
 | Path | Contents |
 | --- | --- |
-| `firmware/` | Arduino CLI sketch and ESP32 firmware for the base, encoders, odometry, neck servo, and micro-ROS |
+| `firmware/` | Arduino CLI sketch and ESP32 firmware for the base, encoders, odometry, neck servo, and serial link |
 | `pi/` | Raspberry Pi services, ROS bridges, diagnostics, and tests |
 | `simulation/` | PyBullet robot model and workspace/LiDAR simulation |
 | `config/` | Measured or pending calibration values; `null` means not measured |

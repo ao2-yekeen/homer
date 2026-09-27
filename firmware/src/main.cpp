@@ -1,20 +1,21 @@
-#include "micro_ros_node/micro_ros_node.h"
+#include "serial_link/serial_link.h"
 #include "robot_controller/robot_controller.h"
 
 namespace {
 homer::RobotController robot;
-homer::MicroRosNode ros(robot);
+homer::SerialLink link(robot);
 }
 
 void setup() {
   const uint32_t now_ms = millis();
   robot.begin(now_ms);
-  ros.begin();
+  link.begin();
   robot.initializeNeck(millis());
 }
 
 void loop() {
-  ros.spin(millis());
+  robot.enforceSafetyTimeout(millis());
+  link.spin(millis());
   const uint32_t now_ms = millis();
   robot.update(now_ms);
   robot.enforceSafetyTimeout(now_ms);

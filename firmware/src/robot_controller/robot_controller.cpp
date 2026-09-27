@@ -66,6 +66,11 @@ void RobotController::setNeckAngle(int angle) {
   neck_.setTargetAngle(angle);
 }
 
+void RobotController::stopDrive() {
+  drive_.stop();
+  last_drive_command_ = {};
+}
+
 void RobotController::update(uint32_t now_ms) {
   neck_.update(now_ms);
   odometry_.update(now_ms);

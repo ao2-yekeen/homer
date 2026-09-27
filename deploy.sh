@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build locally with Arduino CLI, then push the built binaries to the Pi and flash the ESP32
-# selected by the Pi's device-discovery service via its lightweight `esptool`.
+# identified on the Pi via its runtime link and `esptool`.
 # Usage: ./deploy.sh [esp32dev|servo_sweep|servo_idle|motor_diagnostic|micro_ros_serial]
 set -euo pipefail
 
@@ -13,6 +13,7 @@ REMOTE_PORT="/run/user/$PI_UID/mobile-robot-devices/esp32"
 # a leading '~' in its destination argument.
 REMOTE_HOME="$(ssh pi 'printf %s "$HOME"')"
 REMOTE_DIR="$REMOTE_HOME/esp32_fw"
+REMOTE_PI_DIR="$REMOTE_HOME/mobile-robot/pi"
 FLASH_BAUD="${ESP32_FLASH_BAUD:-460800}"
 
 echo "==> Building $ENVIRONMENT firmware locally"
@@ -46,6 +47,11 @@ fi
    
 echo "==> Copying binaries to pi:$REMOTE_DIR"
 ssh pi "mkdir -p $REMOTE_DIR"
+if [ "$ENVIRONMENT" = "esp32dev" ]; then
+  BACKUP_NAME="before-serial-$(date -u +%Y%m%dT%H%M%SZ)"
+  ssh pi "set -e; mkdir -p $REMOTE_DIR/backups/$BACKUP_NAME; cp $REMOTE_DIR/bootloader.bin $REMOTE_DIR/partitions.bin $REMOTE_DIR/boot_app0.bin $REMOTE_DIR/firmware.bin $REMOTE_DIR/backups/$BACKUP_NAME/; cp \$HOME/.config/systemd/user/micro-ros-agent.service $REMOTE_DIR/backups/$BACKUP_NAME/"
+  echo "==> Previous image saved as $REMOTE_DIR/backups/$BACKUP_NAME"
+fi
 scp -q "$ARTIFACT_PREFIX.bootloader.bin" \
   "pi:$REMOTE_DIR/bootloader.bin"
 scp -q "$ARTIFACT_PREFIX.partitions.bin" \
@@ -55,31 +61,26 @@ scp -q "$ARTIFACT_PREFIX.bin" \
 scp -q "$BOOT_APP0" \
   "pi:$REMOTE_DIR/boot_app0.bin"
 if [ "$ENVIRONMENT" = "esp32dev" ]; then
-  scp -q "$PROJECT_DIR/pi/micro-ros-agent.service" \
-    "pi:$REMOTE_DIR/micro-ros-agent.service"
-  ssh pi "install -m 0644 $REMOTE_DIR/micro-ros-agent.service \$HOME/.config/systemd/user/micro-ros-agent.service && systemctl --user daemon-reload"
+  scp -q "$PROJECT_DIR/pi/esp32_serial_bridge.py" \
+    "$PROJECT_DIR/pi/serial_protocol.py" \
+    "$PROJECT_DIR/pi/esp32_port.py" "pi:$REMOTE_PI_DIR/"
+  scp -q "$PROJECT_DIR/pi/esp32-serial-bridge.service" \
+    "pi:$REMOTE_DIR/esp32-serial-bridge.service"
+  ssh pi "install -m 0644 $REMOTE_DIR/esp32-serial-bridge.service \$HOME/.config/systemd/user/esp32-serial-bridge.service && systemctl --user daemon-reload"
 fi
 
-RESTORE_AGENT=1
-restore_agent() {
-  if { [ "$ENVIRONMENT" = "esp32dev" ] || [ "$ENVIRONMENT" = "micro_ros_serial" ]; } &&
-      [ "$RESTORE_AGENT" = 1 ]; then
-    ssh pi "systemctl --user start micro-ros-agent.service" || true
-  fi
-}
-trap restore_agent EXIT
-
-echo "==> Releasing $REMOTE_PORT (stopping micro-ros-agent)"
+echo "==> Releasing $REMOTE_PORT"
 ssh pi "set -e
   test -c $REMOTE_PORT
   systemctl --user stop micro-ros-agent.service
+  systemctl --user stop esp32-serial-bridge.service || true
   for attempt in {1..10}; do
     if ! fuser -s $REMOTE_PORT; then
       exit 0
     fi
     sleep 1
   done
-  echo 'ERROR: $REMOTE_PORT is still in use after stopping micro-ros-agent.' >&2
+  echo 'ERROR: $REMOTE_PORT is still in use after stopping serial services.' >&2
   fuser -v $REMOTE_PORT >&2 || true
   exit 1"
 
@@ -106,17 +107,19 @@ ssh pi "esptool --chip esp32 --port $REMOTE_PORT --baud $FLASH_BAUD --no-stub \
   0x10000 $REMOTE_DIR/firmware.bin"
 
 if [ "$ENVIRONMENT" = "esp32dev" ] || [ "$ENVIRONMENT" = "micro_ros_serial" ]; then
-  echo "==> Reclaiming $REMOTE_PORT (restarting micro-ros-agent)"
-  ssh pi "systemctl --user start micro-ros-agent"
-  RESTORE_AGENT=0
   if [ "$ENVIRONMENT" = "esp32dev" ]; then
+    echo "==> Starting ESP32 serial bridge"
+    ssh pi "systemctl --user disable micro-ros-agent.service && systemctl --user enable --now esp32-serial-bridge.service"
     echo "==> Checking ESP32 ROS messages"
     ssh pi "set -e
       source /opt/ros/jazzy/setup.bash
-      timeout 15 ros2 topic echo /odom --once --qos-reliability reliable >/dev/null
-      timeout 15 ros2 topic echo /drive/status --once --qos-reliability best_effort >/dev/null"
+      timeout 20 ros2 topic echo /drive/link std_msgs/msg/Bool --once --qos-durability transient_local --qos-reliability reliable | grep 'data: true'
+      timeout 20 ros2 topic echo /odom nav_msgs/msg/Odometry --once --qos-reliability reliable >/dev/null
+      timeout 20 ros2 topic echo /drive/status geometry_msgs/msg/Twist --once --qos-reliability best_effort >/dev/null"
+  else
+    ssh pi "systemctl --user start micro-ros-agent.service"
   fi
 else
-  echo "==> Leaving micro-ros-agent stopped for the standalone diagnostic"
+  echo "==> Leaving serial consumers stopped for the standalone diagnostic"
 fi
 echo "==> Done"

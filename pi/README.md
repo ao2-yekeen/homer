@@ -98,12 +98,12 @@ ros2 topic echo /teleop/neck_angle
 ros2 topic echo /soarm/command_delta_ticks
 ```
 
-The ESP32 firmware subscribes to `/teleop/cmd_vel` and publishes `/odom`.
+The ESP32 serial bridge subscribes to `/teleop/cmd_vel` and publishes `/odom`.
 Verify startup with:
 
 ```bash
 ros2 topic echo /odom --once
-systemctl --user is-active micro-ros-agent.service robot-teleop.service gamepad-joy.service
+systemctl --user is-active esp32-serial-bridge.service robot-teleop.service gamepad-joy.service
 ```
 
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
