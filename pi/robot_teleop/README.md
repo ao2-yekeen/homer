@@ -33,7 +33,8 @@ installed elsewhere, update `WorkingDirectory` and `PYTHONPATH` in
 | Hold R1 + left stick | Shoulder pan / lift | Must verify R1 button index and direction |
 | Hold R1 + right stick | Elbow / wrist flex | Must verify axis indices and direction |
 | Hold R1 + D-pad | Wrist roll / gripper | Must verify axis indices and direction |
-| Hold R1 + triggers | Camera/neck up / down | Must verify trigger indices and direction |
+| Hold R1 + R2 | Neck up, toward 150° | Axis 5, normally +1 at rest and decreasing when pressed |
+| Hold R1 + L2 | Neck down, toward 80° | Axis 2, normally +1 at rest and decreasing when pressed |
 
 It starts in Autonomous mode, so it publishes zero manual base commands and
 does not command the arm until Teleop is explicitly selected. L1 and R1 are
@@ -53,7 +54,7 @@ ros2 topic echo /joy
 
 The current source uses defaults based on Xbox receiver conventions; only L1,
 the left-stick axes, and the base teleop mapping have been confirmed. R1, A,
-B, right-stick, D-pad, and trigger mappings remain assumptions. See the
+B, right-stick, D-pad, L2, and R2 mappings remain assumptions. See the
 repository root `README.md` for runtime checks and power-safety requirements.
 
 After mapping confirmation, deploy this repository at `~/mobile-robot` on the

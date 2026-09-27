@@ -28,8 +28,8 @@ ROS command topic.
 | Right stick up/down | **R1** | Wrist flex/extend | SO-ARM joint 4 |
 | D-pad left/right | **R1** | Wrist roll | SO-ARM joint 5 |
 | D-pad up/down | **R1** | Open/close gripper | SO-ARM joint 6 |
-| Right trigger | **R1** | Neck up | `/teleop/neck_angle` |
-| Left trigger | **R1** | Neck down | `/teleop/neck_angle` |
+| **R2** (`Joy.axes[5]`) | **R1** | Neck up; axis moves from about `+1` toward `-1` while pressed | `/teleop/neck_angle` (`std_msgs/msg/Int32`, 80--150°) |
+| **L2** (`Joy.axes[2]`) | **R1** | Neck down; axis moves from about `+1` toward `-1` while pressed | `/teleop/neck_angle` (`std_msgs/msg/Int32`, 80--150°) |
 
 The signs above are the desired physical directions. If the receiver reports
 different indices or reversed axes, update the controller profile rather than
@@ -44,6 +44,16 @@ source /opt/ros/jazzy/setup.bash
 ros2 topic echo /joy
 ```
 
-Confirm A, B, L1, R1, both triggers, both sticks, and all four D-pad
+Confirm A, B, L1, R1, L2, R2, both sticks, and all four D-pad
 directions one at a time. Then verify `/teleop/cmd_vel`,
 `/teleop/neck_angle`, and `/soarm/command_delta_ticks` before testing motion.
+
+For the active `robot_teleop` service, the exact neck command is:
+
+- Hold **R1** + press **R2**: neck angle increases toward 150°.
+- Hold **R1** + press **L2**: neck angle decreases toward 80°.
+- Release **R1**: no further neck commands are sent.
+
+The axis numbers and polarity are the current Aurora/Xbox profile, so confirm
+them with `ros2 topic echo /joy` before enabling motion on a different
+receiver.

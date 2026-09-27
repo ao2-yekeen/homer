@@ -23,18 +23,43 @@ systemctl --user is-active esp32-serial-bridge.service rplidar.service \
   rgb-object-detection.service soarm-bridge.path
 ```
 
-There are two gamepad implementations in this repository:
+There are two gamepad implementations in this repository. The active boot
+configuration uses the newer `robot_teleop/` coordinator and
+`robot-teleop.service`; do not enable both services at once.
 
-- `gamepad_teleop.py` with `gamepad-teleop.service` is the older direct
-  teleoperation path. Its controls are documented below.
-- `robot_teleop/` with `robot-teleop.service` is the newer coordinator. It has
-  a different mapping and topic contract; use its
-  [separate guide](robot_teleop/README.md) when testing it.
+The active coordinator starts in Autonomous mode:
 
-Do not enable both services at once. The safe default for the direct path is
-Autonomous. Press the labelled **A** button once to enter Teleop; hold the
-labelled **B** button for 1.5 seconds to return to Autonomous. There is no
-**Select** action.
+| Gamepad control | Robot action |
+| --- | --- |
+| Press **A** | Select Teleop mode |
+| Press **B** | Select Autonomous mode |
+| Hold **L1** + left stick | Drive the base |
+| Hold **R1** + left stick | Shoulder pan/lift |
+| Hold **R1** + right stick | Elbow/wrist flex |
+| Hold **R1** + D-pad | Wrist roll/gripper |
+| Hold **R1** + **R2** | Neck up; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
+| Hold **R1** + **L2** | Neck down; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
+
+L1 and R1 are separate dead-man switches. Base commands are published on
+`/teleop/cmd_vel`; arm deltas use `/soarm/command_delta_ticks`; neck commands
+use `/teleop/neck_angle`; and mode selection uses `/set_autonomous`. The
+receiver indices and directions for R1, A, B, the right stick, D-pad, L2, and
+R2 still require physical verification on the target controller. In the
+current Aurora/Xbox profile, the expected trigger axes are **R2** `axis 5`
+and **L2** `axis 2`; both normally rest near `+1.0` and move towards `-1.0`
+when pressed. See
+the [active coordinator guide](robot_teleop/README.md) and the
+[full control map](../docs/gamepad-control-map.md).
+
+`gamepad_teleop.py` with `gamepad-teleop.service` is the older direct
+teleoperation path and is retained for reference/diagnostics only. Its
+different face-button mapping must not be used alongside the active
+coordinator.
+
+### Legacy direct-path mapping
+
+The following controls apply only to `gamepad_teleop.py`, not to the active
+`robot_teleop` coordinator:
 
 | Gamepad control (Xbox-labelled Aurora receiver) | Robot action |
 | --- | --- |
@@ -100,9 +125,10 @@ Before driving, confirm that `/joy` is present without moving the robot:
 ros2 topic echo /joy
 ```
 
-## Install the direct path on the Pi
+## Install the legacy direct path on the Pi
 
-Copy `gamepad_teleop.py` to the Pi user's home directory and
+Only use this section when deliberately testing the legacy path. Copy
+`gamepad_teleop.py` to the Pi user's home directory and
 `gamepad-teleop.service` to `~/.config/systemd/user/`, then run:
 
 ```bash

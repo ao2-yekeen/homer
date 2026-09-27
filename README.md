@@ -157,6 +157,27 @@ The Pi services and their verification commands are documented in the
 [Pi runtime guide](pi/README.md). The gamepad coordinator has its own
 [installation and mapping guide](pi/robot_teleop/README.md).
 
+The active joystick path is `gamepad-joy.service` → `/joy` →
+`robot-teleop.service`. Its current controls are:
+
+| Control | Function |
+| --- | --- |
+| **A** | Select Teleop |
+| **B** | Select Autonomous |
+| **L1 + left stick** | Drive the base |
+| **R1 + left stick** | Shoulder pan/lift |
+| **R1 + right stick** | Elbow/wrist flex |
+| **R1 + D-pad** | Wrist roll/gripper |
+| **R1 + R2** | Neck up; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
+| **R1 + L2** | Neck down; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
+
+Teleop publishes `/teleop/cmd_vel`, `/soarm/command_delta_ticks`,
+`/teleop/neck_angle`, and `/set_autonomous`. The detailed mapping and
+pre-motion checks are in
+[`docs/gamepad-control-map.md`](docs/gamepad-control-map.md). The older
+`gamepad_teleop.py` / `gamepad-teleop.service` path has a different mapping
+and must not run at the same time.
+
 With the production image, verify that the ESP32 ROS interfaces are available:
 
 ```bash
