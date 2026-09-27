@@ -63,7 +63,8 @@ scp -q "$BOOT_APP0" \
 if [ "$ENVIRONMENT" = "esp32dev" ]; then
   scp -q "$PROJECT_DIR/pi/esp32_serial_bridge.py" \
     "$PROJECT_DIR/pi/serial_protocol.py" \
-    "$PROJECT_DIR/pi/esp32_port.py" "pi:$REMOTE_PI_DIR/"
+    "$PROJECT_DIR/pi/esp32_port.py" \
+    "$PROJECT_DIR/pi/device_paths.py" "pi:$REMOTE_PI_DIR/"
   scp -q "$PROJECT_DIR/pi/esp32-serial-bridge.service" \
     "pi:$REMOTE_DIR/esp32-serial-bridge.service"
   ssh pi "install -m 0644 $REMOTE_DIR/esp32-serial-bridge.service \$HOME/.config/systemd/user/esp32-serial-bridge.service && systemctl --user daemon-reload"
@@ -84,7 +85,7 @@ ssh pi "set -e
   fuser -v $REMOTE_PORT >&2 || true
   exit 1"
 
-echo "==> Confirming the discovered port is an ESP32"
+echo "==> Confirming the fixed ESP32 port"
 ssh pi "esptool --chip esp32 --port $REMOTE_PORT --baud 115200 --no-stub --after hard_reset chip_id"
 
 echo "==> Flashing ESP32 over $REMOTE_PORT"

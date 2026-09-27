@@ -6,7 +6,7 @@ After=device-core-discovery.service
 
 [Service]
 Type=simple
-ExecStartPre=/usr/bin/python3 %h/mobile-robot/pi/wait_for_lidar.py --routes-file %h/.config/mobile-robot/device-routes.json --runtime-dir %t/mobile-robot-devices
+ExecStartPre=/usr/bin/python3 %h/mobile-robot/pi/wait_for_lidar.py --runtime-dir %t/mobile-robot-devices
 ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source %h/ros2_ws/install/setup.bash && exec %h/ros2_ws/install/rplidar_ros/lib/rplidar_ros/rplidar_node --ros-args -p channel_type:=serial -p serial_port:=%t/mobile-robot-devices/lidar -p serial_baudrate:=115200 -p frame_id:=laser -p inverted:=false -p angle_compensate:=true -p scan_mode:=Standard'
 Restart=always
 RestartSec=5

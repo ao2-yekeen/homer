@@ -38,6 +38,16 @@ physical test has actually been performed and recorded.
 | Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
 | Operator controls | control map and pre-motion checks | [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md) |
 
+### System architecture
+
+See the [architecture diagrams](docs/architecture/README.md) for the Pi boot
+services, ROS topics, ESP32 and arm control, sensors, and LiDAR scan watchdog.
+Start with the [ESP32 loop](firmware/src/main.cpp),
+[Pi serial bridge](pi/esp32_serial_bridge.py), and
+[boot installer](pi/install-boot-services.sh). Fixed Pi hardware paths live in
+[`pi/device_paths.py`](pi/device_paths.py); see the
+[device map](pi/README.md#device-identities-and-usb-safety) before changing cables.
+
 ## Status and safety
 
 This is an integration project for one physical robot, not a general-purpose
@@ -139,7 +149,9 @@ with one of these commands:
 These targets intentionally bypass parts of the full runtime. Use them
 only with the matching physical checks and safety setup.
 
-To build and flash the ESP32 connected to the Pi's discovered serial port:
+Install the [Pi runtime](pi/README.md#automatic-startup) first; the flash
+script requires its ESP32 device link. Then, to build and flash the ESP32
+connected to its fixed Pi USB port:
 
 ```bash
 ./deploy.sh esp32dev
@@ -147,9 +159,11 @@ To build and flash the ESP32 connected to the Pi's discovered serial port:
 
 [`deploy.sh`](deploy.sh) builds locally, saves the previous image on the Pi,
 flashes the ESP32, and switches from the micro-ROS Agent to the serial ROS
-bridge. The bridge identifies the ESP32 by its HOM1 greeting and maintains
-the runtime device link. Review the
-script and confirm the discovered serial device before running it.
+bridge. It uses the ESP32 runtime link, which points to the fixed physical
+USB path in [`pi/device_paths.py`](pi/device_paths.py). The bridge expects an
+ESP32 HOM1 greeting but **does not search other serial ports**. Review the
+script and verify the physical port mapping before flashing; both USB serial
+adapters report the same by-id serial number.
 
 ### Prepare the Pi runtime
 
@@ -158,22 +172,9 @@ The Pi services and their verification commands are documented in the
 [installation and mapping guide](pi/robot_teleop/README.md).
 
 The active joystick path is `gamepad-joy.service` → `/joy` →
-`robot-teleop.service`. Its current controls are:
-
-| Control | Function |
-| --- | --- |
-| **A** | Select Teleop |
-| **B** | Select Autonomous |
-| **L1 + left stick** | Drive the base |
-| **R1 + left stick** | Shoulder pan/lift |
-| **R1 + right stick** | Elbow/wrist flex |
-| **R1 + D-pad** | Wrist roll/gripper |
-| **R1 + R2** | Neck up; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
-| **R1 + L2** | Neck down; publishes `/teleop/neck_angle` (`std_msgs/msg/Int32`) |
-
-Teleop publishes `/teleop/cmd_vel`, `/soarm/command_delta_ticks`,
-`/teleop/neck_angle`, and `/set_autonomous`. The detailed mapping and
-pre-motion checks are in
+`robot-teleop.service`. It publishes `/teleop/cmd_vel`,
+`/soarm/command_delta_ticks`, `/teleop/neck_angle`, and `/set_autonomous`.
+The canonical control map and pre-motion checks are in
 [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md). The older
 `gamepad_teleop.py` / `gamepad-teleop.service` path has a different mapping
 and must not run at the same time.
@@ -192,22 +193,10 @@ subscribes to `/cmd_vel`, `/teleop/cmd_vel`, `/set_autonomous`,
 `/mode_override`, and `/teleop/neck_angle`. The ESP32 uses a bounded HOM1
 serial protocol and retains the one-second motor command timeout.
 
-### ROS topic graph
-
-```mermaid
-flowchart LR
-  joy_node[gamepad-joy] -->|/joy| teleop[robot-teleop]
-  teleop -->|/teleop/cmd_vel\n/set_autonomous\n/teleop/neck_angle| bridge[Pi serial bridge]
-  autonomous[Autonomous ROS node] -->|/cmd_vel| bridge
-  terminal[Terminal operator] -->|/mode_override| bridge
-  bridge <-->|HOM1 serial| esp32[ESP32 controller]
-  bridge -->|/odom reliable\n/drive/status best effort\n/drive/link| ros[ROS graph]
-  teleop -->|/soarm/command_delta_ticks| arm[soarm-bridge]
-```
-
-Normal routing selects `/teleop/cmd_vel` when `/set_autonomous` is `false`,
-and `/cmd_vel` when it is `true`. Terminal override changes that routing as
-described below.
+The [ROS and service diagrams](docs/architecture/README.md) show the main
+runtime flow, including the LiDAR watchdog. Normal routing selects
+`/teleop/cmd_vel` when `/set_autonomous` is `false`, and `/cmd_vel` when it is
+`true`. Terminal override changes that routing as described below.
 
 ### Terminal drive override
 
@@ -264,9 +253,11 @@ on the robot with motion inhibited before attempting a lifted-wheel test.
 
 ## Documentation map
 
+- [System architecture and watchdog diagrams](docs/architecture/README.md)
 - [Gamepad controls and safety checks](docs/gamepad-control-map.md)
 - [Reachable-workspace characterisation](docs/calibration/reachable-workspace.md)
 - [Raspberry Pi runtime](pi/README.md)
+- [ESP32 serial protocol and bridge](docs/esp32-serial-bridge.md)
 - [Gamepad coordinator](pi/robot_teleop/README.md)
 - [Simulation](simulation/README.md)
 

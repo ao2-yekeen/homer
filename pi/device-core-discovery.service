@@ -1,10 +1,10 @@
 [Unit]
-Description=Mobile Robot core device links (ESP32 and RGB camera)
+Description=Mobile Robot fixed device links (ESP32, LiDAR, RGB camera)
 After=network.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 %h/mobile-robot/pi/device_discovery.py --runtime-dir %t/mobile-robot-devices --routes-file %h/.config/mobile-robot/device-routes.json
+ExecStart=/usr/bin/python3 %h/mobile-robot/pi/device_discovery.py --runtime-dir %t/mobile-robot-devices
 RemainAfterExit=yes
 
 [Install]
