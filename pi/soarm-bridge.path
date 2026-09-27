@@ -1,0 +1,9 @@
+[Unit]
+Description=Start SO-ARM bridge when its USB device appears
+
+[Path]
+PathExists=/dev/robot-soarm
+Unit=soarm-bridge.service
+
+[Install]
+WantedBy=default.target

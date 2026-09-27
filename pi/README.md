@@ -1,5 +1,28 @@
 # Raspberry Pi runtime
 
+## Automatic startup
+
+The Pi user has systemd lingering enabled, so enabled user services start
+without a login. Apply the tracked boot units with
+`./pi/install-boot-services.sh` from the repository root. It enables the
+ESP32 serial bridge, LiDAR, RGB camera, gamepad, teleop coordinator, ToF
+publisher, device discovery, and an SO-ARM device watcher. It disables the
+old micro-ROS Agent and direct gamepad teleop service so they cannot compete
+for the same serial port or command topics.
+
+The SO-ARM watcher starts its bridge only when `/dev/robot-soarm` exists.
+LiDAR startup checks the previously identified port and recreates its runtime
+link when the sensor responds. An unplugged arm or late LiDAR does not prevent
+the ESP32 bridge from starting. Check boot state with:
+
+```bash
+systemctl --user is-enabled esp32-serial-bridge.service rplidar.service \
+  rgb-object-detection.service soarm-bridge.path gamepad-joy.service \
+  robot-teleop.service tof-depth-publisher.service
+systemctl --user is-active esp32-serial-bridge.service rplidar.service \
+  rgb-object-detection.service soarm-bridge.path
+```
+
 There are two gamepad implementations in this repository:
 
 - `gamepad_teleop.py` with `gamepad-teleop.service` is the older direct

@@ -1,6 +1,8 @@
 [Unit]
 Description=ESP32 serial ROS bridge
 After=network.target
+Wants=device-core-discovery.service
+After=device-core-discovery.service
 
 [Service]
 Type=simple
