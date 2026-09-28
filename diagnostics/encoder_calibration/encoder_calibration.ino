@@ -17,7 +17,7 @@ void IRAM_ATTR countLeft() {
 }
 
 void IRAM_ATTR countRight() {
-  right_count += digitalRead(homer::config::kRightEncoderB) ? 1 : -1;
+  right_count += digitalRead(homer::config::kRightEncoderB) ? -1 : 1;
 }
 
 void disableMotors() {

@@ -28,6 +28,23 @@ interpret straight travel as rotation.
 
 ## Follow-up
 
+### 2026-09-28 hand-moved run
+
+The operator moved the robot from the 4 cm mark to the 44 cm mark (40 cm
+forward). The motor-disabled calibration image recorded left `+906` counts and
+right `-699` counts during that movement. The complete capture is in
+[`encoder-hand-2026-09-28.csv`](encoder-hand-2026-09-28.csv). Both wheels moved
+forward, so the opposite count signs confirm the right encoder polarity was
+reversed in software. The right ISR sign has been inverted in production and
+calibration sources. Physical retesting of the new images is still required.
+
+With the current 65 mm wheel diameter and 377 counts per wheel turn, the raw
+counts imply 49.1 cm left and 37.9 cm right. After correcting the right sign,
+their mean is 43.5 cm, versus 40 cm measured. The unequal magnitudes could
+reflect wheel slip, an uneven hand push, or calibration error. One run does not
+identify which, so wheel diameter and counts per turn have not been changed.
+
+
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
 commands. Build it on the workstation with `./build.sh encoder_calibration`.
