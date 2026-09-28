@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build locally with Arduino CLI, then push the built binaries to the Pi and flash the ESP32
 # identified on the Pi via its runtime link and `esptool`.
-# Usage: ./deploy.sh [esp32dev|servo_sweep|servo_idle|motor_diagnostic|micro_ros_serial]
+# Usage: ./deploy.sh [esp32dev|servo_sweep|servo_idle|motor_diagnostic|encoder_calibration|micro_ros_serial]
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -26,7 +26,7 @@ case "$ENVIRONMENT" in
     PROFILE="production"
     SKETCH_DIR="$PROJECT_DIR/firmware"
     ;;
-  servo_sweep|servo_idle|motor_diagnostic|micro_ros_serial)
+  servo_sweep|servo_idle|motor_diagnostic|encoder_calibration|micro_ros_serial)
     SKETCH_NAME="$ENVIRONMENT"
     PROFILE="diagnostic"
     SKETCH_DIR="$PROJECT_DIR/diagnostics/$ENVIRONMENT"

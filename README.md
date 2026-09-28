@@ -144,6 +144,7 @@ with one of these commands:
 ./build.sh servo_sweep
 ./build.sh servo_idle
 ./build.sh motor_diagnostic
+./build.sh encoder_calibration
 ```
 
 These targets intentionally bypass parts of the full runtime. Use them

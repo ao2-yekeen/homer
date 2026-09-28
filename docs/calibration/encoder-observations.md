@@ -28,6 +28,27 @@ interpret straight travel as rotation.
 
 ## Follow-up
 
+Use the standalone `encoder_calibration` image for raw measurements. It keeps
+all motor control pins low and does not run the ROS bridge or accept motion
+commands. Build it on the workstation with `./build.sh encoder_calibration`.
+Only flash it during a separate calibration session; restore and verify the
+known working production image before driving again. With the diagnostic
+image running, capture its 115200 baud USB serial CSV while turning each
+marked wheel forward by exactly one revolution by hand, then move the robot
+straight along a measured floor mark with motor power disabled. No ROS topic
+or extra traffic in the driving firmware is needed.
+
+The CSV records elapsed milliseconds, signed cumulative counts, signed count
+changes, per-wheel travel, and the linear/angular velocities calculated from
+that same count interval. One forward wheel revolution should produce roughly
+377 counts of the correct sign if the current configuration is right. The
+straight-line run should produce positive, similar left and right counts;
+compare their total wheel travel with the measured floor distance. The
+velocity columns use `v=(left_m+right_m)/(2*dt)` and
+`omega=(right_m-left_m)/(track_width*dt)`, with `dt` in seconds. This separates
+encoder polarity/counts-per-turn errors from wheel diameter and track-width
+calibration.
+
 Check the direction/sign handling in:
 
 ```text
