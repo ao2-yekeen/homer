@@ -130,6 +130,26 @@ this, and reverse odometry must be treated as unreliable until the direction
 signal is corrected and retested. Production firmware was restored, verified,
 and the ROS bridge smoke checks passed after the capture.
 
+### 2026-09-29 repeated forward wheel turns
+
+The operator requested another raw capture for one marked forward revolution
+of each wheel. In
+[`encoder-forward-one-turn-2026-09-29.csv`](encoder-forward-one-turn-2026-09-29.csv),
+the final counts were left `+479` and right `+368`. Two left deltas were negative
+during the turn, for 481 positive and 2 negative counts; every right delta was
+positive. Compared with the preceding hand-moved reverse capture (`-488`
+left, `+369` right), the magnitudes are close but the right sign is positive
+in both directions. Earlier forward one-turn captures gave left `+506`/`+497`
+and right `+379`/`+379`. These variations do not justify changing the current
+502/379 counts-per-turn constants based on this single repeat. The direction
+fault remains the priority.
+
+The diagnostic flash initially lost serial contact twice and the first
+production restore also stopped partway through. Both images were recovered
+at lower flash rates. The final production image passed verification in all
+four regions at 38400 baud, and `/drive/link`, `/odom`, and `/drive/status`
+were observed after the serial bridge restarted.
+
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
