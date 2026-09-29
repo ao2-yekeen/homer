@@ -12,7 +12,10 @@ constexpr uint8_t kRightEncoderA = 23;
 constexpr uint8_t kRightEncoderB = 22;
 constexpr uint8_t kLeftEncoderA = 4;
 constexpr uint8_t kLeftEncoderB = 19;
-constexpr double kEncoderCountsPerWheelTurn = 377.0;
+// Mean of two marked, hand-turned wheel revolutions on 2026-09-29:
+// left 506/497 counts, right 379/379 counts. Recheck after encoder hardware work.
+constexpr double kLeftEncoderCountsPerWheelTurn = 502.0;
+constexpr double kRightEncoderCountsPerWheelTurn = 379.0;
 constexpr double kWheelDiameterMeters = 0.065;
 constexpr double kTrackWidthMeters = 0.33;
 

@@ -61,11 +61,11 @@ void loop() {
 
   const int32_t left_delta = left - previous_left;
   const int32_t right_delta = right - previous_right;
-  const double meters_per_tick =
-      PI * homer::config::kWheelDiameterMeters /
-      homer::config::kEncoderCountsPerWheelTurn;
-  const double left_m = left_delta * meters_per_tick;
-  const double right_m = right_delta * meters_per_tick;
+  const double wheel_circumference = PI * homer::config::kWheelDiameterMeters;
+  const double left_m = left_delta * wheel_circumference /
+                        homer::config::kLeftEncoderCountsPerWheelTurn;
+  const double right_m = right_delta * wheel_circumference /
+                         homer::config::kRightEncoderCountsPerWheelTurn;
   const double seconds = elapsed_ms / 1000.0;
   const double linear_mps = (left_m + right_m) / (2.0 * seconds);
   const double angular_radps =

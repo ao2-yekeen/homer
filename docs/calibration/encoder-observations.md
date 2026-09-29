@@ -44,6 +44,34 @@ their mean is 43.5 cm, versus 40 cm measured. The unequal magnitudes could
 reflect wheel slip, an uneven hand push, or calibration error. One run does not
 identify which, so wheel diameter and counts per turn have not been changed.
 
+### 2026-09-29 lifted-wheel turn
+
+With the motor-disabled calibration image, the operator turned each lifted
+wheel forward one marked revolution and confirmed each returned to its starting
+mark. The capture in
+[`encoder-wheel-turn-2026-09-29.csv`](encoder-wheel-turn-2026-09-29.csv) started at
+zero and settled at left `+506`, right `+379` counts. Neither count decreased
+during the capture. A second marked revolution of each wheel in
+[`encoder-wheel-turn-repeat-2026-09-29.csv`](encoder-wheel-turn-repeat-2026-09-29.csv)
+settled at left `+497`, right `+379`, again without any decreasing counts.
+
+The right result is close to the former shared calibration of 377 counts per
+wheel turn; the left consistently produced about 500. The two left/right
+ratios are 1.335 and 1.311, close to the 1.296 magnitude ratio from the
+earlier straight-line run. Production now uses separate 502 left and 379 right
+counts per wheel turn, rounded from the two measurements. At the current 65 mm
+wheel diameter, the old 40 cm run would imply approximately 36.9 cm left and
+37.7 cm right after this correction. This is a retrospective calculation, not
+a validated straight-line odometry test. The remaining distance error and the
+cause of the different counts still need investigation. Inspect the left
+encoder's mechanical ratio and signal if the count changes with wheel speed.
+
+The production image was restored, flash-verified, and its ROS bridge smoke
+checks passed after each raw-count capture. The new per-wheel calibration was
+then built and flashed; all regions passed flash verification, and the bridge
+smoke checks for `/drive/link`, `/odom`, and `/drive/status` passed. A physical
+straight-line odometry run is still required before this branch is merged.
+
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
@@ -58,9 +86,10 @@ or extra traffic in the driving firmware is needed.
 The CSV records elapsed milliseconds, signed cumulative counts, signed count
 changes, per-wheel travel, and the linear/angular velocities calculated from
 that same count interval. One forward wheel revolution should produce roughly
-377 counts of the correct sign if the current configuration is right. The
-straight-line run should produce positive, similar left and right counts;
-compare their total wheel travel with the measured floor distance. The
+502 left or 379 right counts of the correct sign if the current calibration is
+stable. In a straight-line run, compare the calibrated wheel travel rather
+than the raw counts; both wheel travel estimates should be positive and similar.
+Compare their mean with the measured floor distance. The
 velocity columns use `v=(left_m+right_m)/(2*dt)` and
 `omega=(right_m-left_m)/(track_width*dt)`, with `dt` in seconds. This separates
 encoder polarity/counts-per-turn errors from wheel diameter and track-width
