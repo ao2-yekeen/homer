@@ -36,7 +36,7 @@ right `-699` counts during that movement. The complete capture is in
 [`encoder-hand-2026-09-28.csv`](encoder-hand-2026-09-28.csv). Both wheels moved
 forward, so the opposite count signs confirm the right encoder polarity was
 reversed in software. The right ISR sign has been inverted in production and
-calibration sources. Physical retesting of the new images is still required.
+calibration sources. The subsequent retests are recorded below.
 
 With the current 65 mm wheel diameter and 377 counts per wheel turn, the raw
 counts imply 49.1 cm left and 37.9 cm right. After correcting the right sign,
@@ -69,8 +69,20 @@ encoder's mechanical ratio and signal if the count changes with wheel speed.
 The production image was restored, flash-verified, and its ROS bridge smoke
 checks passed after each raw-count capture. The new per-wheel calibration was
 then built and flashed; all regions passed flash verification, and the bridge
-smoke checks for `/drive/link`, `/odom`, and `/drive/status` passed. A physical
-straight-line odometry run is still required before this branch is merged.
+smoke checks for `/drive/link`, `/odom`, and `/drive/status` passed.
+
+### 2026-09-29 straight-line odometry validation
+
+With the corrected production image running, the operator moved the robot
+straight from the 1 cm mark to the 40 cm mark, a measured 39 cm displacement.
+The live `/odom` capture in
+[`encoder-straight-2026-09-29.csv`](encoder-straight-2026-09-29.csv) contains 384
+messages. It started at `(x=0.4494, y=0.0318)` m and ended at
+`(x=0.7628, y=0.2568)` m. The endpoint displacement was 38.58 cm, 0.42 cm
+below the marked distance (1.1%). Heading changed by about 1.25 degrees.
+This validates the per-wheel count conversion for this hand-moved straight
+run. Wheel diameter, track width, and motor-driven odometry still have not
+been independently calibrated.
 
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
