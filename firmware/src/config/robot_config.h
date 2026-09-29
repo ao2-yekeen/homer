@@ -8,11 +8,14 @@ constexpr uint32_t kSerialBaud = 115200;
 constexpr uint32_t kCommandTimeoutMs = 1000;
 constexpr uint32_t kOdometryPeriodMs = 200;
 
-constexpr uint8_t kRightEncoderA = 23;
-constexpr uint8_t kRightEncoderB = 22;
-constexpr uint8_t kLeftEncoderA = 4;
-constexpr uint8_t kLeftEncoderB = 19;
-constexpr double kEncoderCountsPerWheelTurn = 377.0;
+// Physical sides confirmed by isolated hand turns on 2026-09-29.
+constexpr uint8_t kLeftEncoderA = 23;
+constexpr uint8_t kLeftEncoderB = 22;
+constexpr uint8_t kRightEncoderA = 4;
+constexpr uint8_t kRightEncoderB = 19;
+// Marked wheel turns: physical left about 379, physical right about 502.
+constexpr double kLeftEncoderCountsPerWheelTurn = 379.0;
+constexpr double kRightEncoderCountsPerWheelTurn = 502.0;
 constexpr double kWheelDiameterMeters = 0.065;
 constexpr double kTrackWidthMeters = 0.33;
 

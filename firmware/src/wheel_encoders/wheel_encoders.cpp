@@ -32,7 +32,7 @@ void IRAM_ATTR WheelEncoders::onLeftEdge() {
 }
 
 void IRAM_ATTR WheelEncoders::countRight() {
-  right_count_ += digitalRead(config::kRightEncoderB) ? 1 : -1;
+  right_count_ += digitalRead(config::kRightEncoderB) ? -1 : 1;
 }
 
 void IRAM_ATTR WheelEncoders::countLeft() {

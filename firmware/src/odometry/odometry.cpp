@@ -18,11 +18,11 @@ bool Odometry::update(uint32_t now_ms) {
   int32_t left = 0;
   int32_t right = 0;
   encoders_.readCounts(left, right);
-  const double meters_per_tick =
-      (config::kWheelDiameterMeters * PI) /
-      config::kEncoderCountsPerWheelTurn;
-  const double dl = (left - last_left_) * meters_per_tick;
-  const double dr = (right - last_right_) * meters_per_tick;
+  const double wheel_circumference = config::kWheelDiameterMeters * PI;
+  const double dl = (left - last_left_) * wheel_circumference /
+                    config::kLeftEncoderCountsPerWheelTurn;
+  const double dr = (right - last_right_) * wheel_circumference /
+                    config::kRightEncoderCountsPerWheelTurn;
   const double distance = (dl + dr) * 0.5;
   const double heading_delta = (dr - dl) / config::kTrackWidthMeters;
   state_.x += distance * cos(state_.heading + heading_delta * 0.5);
