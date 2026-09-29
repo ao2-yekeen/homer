@@ -99,6 +99,16 @@ successful forward run to claim reverse odometry is calibrated. Before changing
 scale factors, check raw counts for one marked reverse wheel turn with motors
 disabled, then capture raw counts during a controlled powered reverse run.
 
+Reconstructing wheel travel from successive odometry positions and headings
+with the configured 0.33 m track width gives about `-0.197 m` left and
+`+0.280 m` right during this reverse run. The right magnitude agrees with the
+reported roughly 28 cm move, but its sign is forward; the left sign is reverse
+but its magnitude is short. These are inferred from integrated odometry, not
+raw count frames. A single shared sign flip or wheel-scale adjustment would
+not correct both discrepancies. The cause cannot be isolated from this capture
+alone because the forward validation was hand-moved and this reverse run was
+joystick-powered.
+
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
