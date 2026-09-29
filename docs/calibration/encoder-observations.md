@@ -150,6 +150,22 @@ at lower flash rates. The final production image passed verification in all
 four regions at 38400 baud, and `/drive/link`, `/odom`, and `/drive/status`
 were observed after the serial bridge restarted.
 
+### 2026-09-29 physical wheel mapping and B-edge capture
+
+The operator turned the robot's physical right wheel forward and backward,
+then the physical left wheel, while the motor-disabled diagnostic counted
+transitions on both encoder B pins. The complete record is
+[`encoder-b-direction-2026-09-29.csv`](encoder-b-direction-2026-09-29.csv).
+During the physical right-wheel turns, the software left count ranged from
+`-136` to `+346` and its B input recorded 2,694 transitions, while the
+software right inputs stayed at zero. During the physical left-wheel turns,
+the software right count increased to `+724` and its B input still recorded
+zero transitions. This confirms that the configured left/right encoder pin
+groups are swapped relative to the robot's physical wheels. It also locates
+the missing direction transitions on the physical left wheel's B signal,
+currently configured as GPIO 22. A separate pin-mapping correction is needed;
+it will not repair that B signal.
+
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
