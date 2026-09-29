@@ -69,3 +69,23 @@ continued.
 Physical USB replug, multiple cold power cycles, active motor and neck
 commands, and an extended idle run still need validation before claiming
 long-term reliability.
+
+## Future work: prevent firmware mismatches
+
+The 2026-09-28 reverse-drive investigation found that the ESP32 was running an
+older image while the Pi held the current production binary. The older image
+sent an odometry frame the bridge could not parse. The exact flash command
+that installed it was not recorded.
+
+- [ ] Include a firmware build ID and serial protocol version in the ESP32 boot
+  greeting. Have the Pi bridge reject incompatible versions, keep
+  `/drive/link` false, send a stop command, and log the observed and expected
+  versions.
+- [ ] Make deployment record the source commit and image hash, then compare
+  them with the image read back from the ESP32 after flashing. Keep diagnostic
+  images clearly labelled and document how to restore production firmware.
+- [ ] Monitor receipt of actual `/odom` and `/drive/status` messages, including
+  their age and frame validity. Alert when either stream stops or the reported
+  drive output disagrees with a sustained command.
+- [ ] Validate the safeguards with an incompatible image and a missing
+  telemetry stream before relying on them for driving.
