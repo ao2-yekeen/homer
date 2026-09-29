@@ -84,6 +84,21 @@ This validates the per-wheel count conversion for this hand-moved straight
 run. Wheel diameter, track width, and motor-driven odometry still have not
 been independently calibrated.
 
+### 2026-09-29 reverse observation
+
+The operator commanded reverse with the joystick, reported that both wheels
+rolled backward while the robot stayed pointed straight, and observed travel
+from approximately the 30 cm mark to the 2 cm mark (roughly 28 cm). In the saved
+[`encoder-reverse-2026-09-29.csv`](encoder-reverse-2026-09-29.csv) capture,
+`/odom` moved only 3.72 cm between endpoints while its heading changed by
+82.8 degrees. This is a large mismatch; the approximate floor marks do not
+explain it. The reported physical motion conflicts with the odometry, but the
+capture does not expose raw left/right encoder counts and therefore does not
+identify which signal or powered-drive condition caused it. Do not use the
+successful forward run to claim reverse odometry is calibrated. Before changing
+scale factors, check raw counts for one marked reverse wheel turn with motors
+disabled, then capture raw counts during a controlled powered reverse run.
+
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
 all motor control pins low and does not run the ROS bridge or accept motion
