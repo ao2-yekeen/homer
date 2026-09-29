@@ -22,9 +22,9 @@ expected physical displacement. The reported heading also changed by roughly
 ## Observation
 
 The heading change during a straight-line test indicates that the issue is
-probably not only wheel-diameter calibration. One encoder is likely counting
-with the opposite polarity to the other encoder, causing the odometry to
-interpret straight travel as rotation.
+not only wheel-diameter calibration. The right encoder's direction sensing
+requires checking in both directions; the later reverse test below showed
+that its count sign did not reverse.
 
 ## Follow-up
 
@@ -34,9 +34,12 @@ The operator moved the robot from the 4 cm mark to the 44 cm mark (40 cm
 forward). The motor-disabled calibration image recorded left `+906` counts and
 right `-699` counts during that movement. The complete capture is in
 [`encoder-hand-2026-09-28.csv`](encoder-hand-2026-09-28.csv). Both wheels moved
-forward, so the opposite count signs confirm the right encoder polarity was
-reversed in software. The right ISR sign has been inverted in production and
-calibration sources. The subsequent retests are recorded below.
+forward, so the opposite count signs initially appeared to indicate reversed
+right encoder polarity. The right ISR sign was inverted in production and
+calibration sources. That made forward readings positive, but the later
+reverse test below showed that the right count still increased when its wheel
+was turned backward. The original one-direction test did not establish a
+working direction signal.
 
 With the current 65 mm wheel diameter and 377 counts per wheel turn, the raw
 counts imply 49.1 cm left and 37.9 cm right. After correcting the right sign,
@@ -108,6 +111,24 @@ raw count frames. A single shared sign flip or wheel-scale adjustment would
 not correct both discrepancies. The cause cannot be isolated from this capture
 alone because the forward validation was hand-moved and this reverse run was
 joystick-powered.
+
+### 2026-09-29 motor-disabled reverse wheel turns
+
+The operator turned the wheels backward by hand with the motor-disabled
+calibration image running. The raw capture in
+[`encoder-reverse-hand-2026-09-29.csv`](encoder-reverse-hand-2026-09-29.csv)
+started at zero and ended at left `-488`, right `+369` counts. Every nonzero
+left delta was negative and every nonzero right delta was positive. Earlier
+forward hand turns gave positive counts on both sides. Thus the right count
+sign stays positive for both wheel directions, even with the motors off. This
+confirms a right direction-sensing fault; motor electrical noise is not needed
+to reproduce it. In the current firmware, GPIO 22 (right encoder B) is sampled
+when GPIO 23 (right encoder A) rises to choose count direction. The capture
+cannot distinguish a disconnected or incorrect B wire, a failed B channel,
+or an input-level problem. The previous single sign inversion cannot repair
+this, and reverse odometry must be treated as unreliable until the direction
+signal is corrected and retested. Production firmware was restored, verified,
+and the ROS bridge smoke checks passed after the capture.
 
 
 Use the standalone `encoder_calibration` image for raw measurements. It keeps
