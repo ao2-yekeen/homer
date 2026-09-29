@@ -162,8 +162,11 @@ straight along a measured floor mark with motor power disabled. No ROS topic
 or extra traffic in the driving firmware is needed.
 
 The CSV records elapsed milliseconds, signed cumulative counts, signed count
-changes, per-wheel travel, and the linear/angular velocities calculated from
-that same count interval. One forward wheel revolution should produce roughly
+changes, cumulative transitions on each encoder B pin, per-wheel travel, and
+the linear/angular velocities calculated from that same count interval. The B
+transition counters help distinguish a quiet/disconnected direction channel
+from a channel that changes but has the wrong phase relative to A. One forward
+wheel revolution should produce roughly
 502 left or 379 right counts of the correct sign if the current calibration is
 stable. In a straight-line run, compare the calibrated wheel travel rather
 than the raw counts; both wheel travel estimates should be positive and similar.
