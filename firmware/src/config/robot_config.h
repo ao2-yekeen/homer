@@ -6,6 +6,8 @@ namespace homer::config {
 
 constexpr uint32_t kSerialBaud = 115200;
 constexpr uint32_t kCommandTimeoutMs = 1000;
+// Keep the encoder code available, but disable capture and odometry telemetry.
+constexpr bool kEnableEncoderOdometry = false;
 constexpr uint32_t kOdometryPeriodMs = 200;
 
 // Physical sides confirmed by isolated hand turns on 2026-09-29.

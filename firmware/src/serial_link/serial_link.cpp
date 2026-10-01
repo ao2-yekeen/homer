@@ -59,7 +59,8 @@ void SerialLink::spin(uint32_t now_ms) {
     snprintf(body, sizeof(body), "R|%lu", static_cast<unsigned long>(boot_id_));
     send(body);
   }
-  if (now_ms - last_odom_ms_ >= config::kOdometryPeriodMs) {
+  if (config::kEnableEncoderOdometry &&
+      now_ms - last_odom_ms_ >= config::kOdometryPeriodMs) {
     last_odom_ms_ = now_ms;
     publishOdometry(now_ms);
   }
