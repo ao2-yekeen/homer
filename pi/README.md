@@ -175,14 +175,22 @@ ros2 topic echo /teleop/neck_angle
 ros2 topic echo /soarm/command_delta_ticks
 ```
 
-The ESP32 serial bridge subscribes to `/teleop/cmd_vel` and publishes `/odom`.
+The ESP32 serial bridge subscribes to `/teleop/cmd_vel`. Encoder odometry is
+disabled in the production firmware, so the bridge receives no odometry
+frames and publishes no `/odom` messages.
 Verify startup with:
 
 ```bash
-ros2 topic echo /odom --once
+ros2 topic echo /drive/status --once
 systemctl --user is-active esp32-serial-bridge.service robot-teleop.service gamepad-joy.service
 ```
 
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
 runtime `mobile-robot-devices/lidar` link, which points to its fixed USB
 by-path location. The service restarts automatically if the driver exits.
+
+## Encoder-free SLAM and laptop RViz
+
+Use [the Homer SLAM guide](homer_slam/README.md) for URDF-based LiDAR odometry,
+mapping, saved-map localization, and the Jazzy RViz container. The laptop hotspot
+is the primary connection; Tailscale is an explicitly selected fallback.

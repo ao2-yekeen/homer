@@ -115,7 +115,6 @@ if [ "$ENVIRONMENT" = "esp32dev" ] || [ "$ENVIRONMENT" = "micro_ros_serial" ]; t
     ssh pi "set -e
       source /opt/ros/jazzy/setup.bash
       timeout 20 ros2 topic echo /drive/link std_msgs/msg/Bool --once --qos-durability transient_local --qos-reliability reliable | grep 'data: true'
-      timeout 20 ros2 topic echo /odom nav_msgs/msg/Odometry --once --qos-reliability reliable >/dev/null
       timeout 20 ros2 topic echo /drive/status geometry_msgs/msg/Twist --once --qos-reliability best_effort >/dev/null"
   else
     ssh pi "systemctl --user start micro-ros-agent.service"

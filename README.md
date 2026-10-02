@@ -103,8 +103,10 @@ and the required physical validation procedure, see
 
 The ESP32 is built with Arduino CLI and connects to a ROS 2 bridge on the Pi
 through a compact serial protocol.
-The `esp32dev` production image provides drive-mode selection, encoder
-odometry, neck control, drive status, and a one-second command safety timeout.
+The `esp32dev` production image provides drive-mode selection, neck control,
+drive status, and a one-second command safety timeout. Encoder capture and
+odometry telemetry are disabled by `kEnableEncoderOdometry = false` in
+`firmware/src/config/robot_config.h`; set it to `true` to re-enable them.
 Standalone diagnostic targets deliberately bypass parts of that runtime; use
 them only with the matching physical checks and safety setup.
 

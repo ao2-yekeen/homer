@@ -1,0 +1,2 @@
+# Upstream diff context must preserve the original source whitespace.
+pi/homer_slam/patches/*.patch -whitespace

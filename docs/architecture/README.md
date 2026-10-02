@@ -16,8 +16,12 @@ flowchart LR
   teleop -->|/soarm/command_delta_ticks| arm[soarm-bridge.service]
   arm <--> soarm[SO-ARM 101 USB controller]
   bridge <-->|HOM1 serial on fixed ESP32 USB path| esp32[ESP32 firmware]
-  esp32 --> base[Drive motors, encoders, neck]
-  bridge -->|/odom, /drive/status, /drive/link| ros[ROS 2 consumers]
+  esp32 --> base[Drive motors, neck; encoders disabled]
+  bridge -->|/drive/status, /drive/link| ros[ROS 2 consumers]
+  driver -->|/scan| rf2o[RF2O LiDAR odometry]
+  rf2o -->|/odom and odom to base_link| slam[SLAM Toolbox]
+  driver -->|/scan| slam
+  slam -->|/map and map to odom| viewer[Laptop RViz over hotspot]
 
   lidar[RPLIDAR A1] -->|fixed LiDAR USB path| driver[rplidar.service]
   driver -->|/scan| ros
@@ -68,3 +72,7 @@ Check the live system with `systemctl --user status lidar-scan-watchdog.service`
 and `journalctl --user -u lidar-scan-watchdog.service -b`. The [Pi runtime
 guide](../../pi/README.md#device-identities-and-usb-safety) lists the exact
 device paths and safe verification commands.
+
+For encoder-free mapping, the lightweight viewer, and explicit hotspot/Tailscale
+profiles, see [the SLAM guide](../../pi/homer_slam/README.md). SLAM startup is
+manual until its physical checks pass.

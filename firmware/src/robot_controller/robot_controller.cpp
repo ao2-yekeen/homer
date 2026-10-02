@@ -7,8 +7,10 @@ namespace homer {
 RobotController::RobotController() : odometry_(encoders_) {}
 
 void RobotController::begin(uint32_t now_ms) {
-  encoders_.begin();
-  odometry_.begin(now_ms);
+  if (config::kEnableEncoderOdometry) {
+    encoders_.begin();
+    odometry_.begin(now_ms);
+  }
   drive_.begin();
   // The Pi teleop coordinator may already be in TELEOP when the ESP32
   // reconnects after a reset. Start in that mode so its dead-man command
@@ -73,7 +75,7 @@ void RobotController::stopDrive() {
 
 void RobotController::update(uint32_t now_ms) {
   neck_.update(now_ms);
-  odometry_.update(now_ms);
+  if (config::kEnableEncoderOdometry) odometry_.update(now_ms);
 }
 
 void RobotController::enforceSafetyTimeout(uint32_t now_ms) {
