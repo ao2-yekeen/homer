@@ -37,7 +37,13 @@ class Esp32SerialBridge(Node):
         self.override_active = False
         self.reconnects = 0
         self.candidate_list: list[str] = []
-        self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
+        self.publish_encoder_odometry = self.declare_parameter(
+            "publish_encoder_odometry", False
+        ).value
+        self.odom_pub = (
+            self.create_publisher(Odometry, "/odom", 10)
+            if self.publish_encoder_odometry else None
+        )
         status_qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.status_pub = self.create_publisher(Twist, "/drive/status", status_qos)
         link_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -145,7 +151,7 @@ class Esp32SerialBridge(Node):
         try:
             if kind == "R" and len(fields) == 1:
                 self._ready(str(int(fields[0])))
-            elif self.connected and kind == "O" and len(fields) == 6:
+            elif self.connected and self.odom_pub is not None and kind == "O" and len(fields) == 6:
                 _, x, y, heading, linear, angular = (float(value) for value in fields)
                 if not all(math.isfinite(value) for value in (x, y, heading, linear, angular)):
                     raise ValueError("nonfinite odometry")

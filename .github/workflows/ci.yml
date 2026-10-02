@@ -20,3 +20,14 @@ jobs:
           python-version: '3.12'
       - name: Run hardware-independent tests
         run: PYTHONPATH=pi/robot_teleop/src python3 -m unittest discover -s pi/robot_teleop/tests -v
+
+  slam-core:
+    name: SLAM geometry and network checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python3 -m pip install PyYAML
+      - run: PYTHONPATH=pi/homer_slam python3 -m unittest discover -s pi/homer_slam/test -p 'test_*.py' -v

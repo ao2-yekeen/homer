@@ -2,6 +2,12 @@
 
 ## Start here
 
+**Later update:** the temporary TurtleBot3 LDS-01 now supplies valid scans,
+and real bench mapping/save/reload works. See
+[the weekend continuation](slam-lds01-weekend-2026-10-02.md) for the current
+Pi configuration and remaining acceptance gaps. The old RPLIDAR cable problem
+below is historical and has not been diagnosed or repaired.
+
 Continue in `/home/ao2-yekeen/github/esp32_robot_bt`, branch
 `implement-hotspot-slam`. **Software is implemented, but real mapping is not
 working or accepted. Immediate priority: investigate the operator's split

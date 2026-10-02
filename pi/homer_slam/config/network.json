@@ -1,0 +1,15 @@
+{
+  "domain_id": 0,
+  "profiles": {
+    "hotspot": {
+      "subnet": "192.168.137.0/24",
+      "pi": {"address": "192.168.137.250", "interface": "wlan0"},
+      "laptop": {"address": "192.168.137.1", "interface": "auto"}
+    },
+    "tailscale": {
+      "subnet": "100.64.0.0/10",
+      "pi": {"address": "100.66.192.19", "interface": "tailscale0"},
+      "laptop": {"address": "100.88.32.30", "interface": "tailscale0"}
+    }
+  }
+}
