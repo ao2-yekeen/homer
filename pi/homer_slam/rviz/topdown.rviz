@@ -37,8 +37,8 @@ Visualization Manager:
         Durability Policy: Volatile
         Reliability Policy: Reliable
     - Class: rviz_default_plugins/LaserScan
-      Name: Laser (optional)
-      Enabled: false
+      Name: Live laser scan
+      Enabled: true
       Topic:
         Value: /scan
         Depth: 1

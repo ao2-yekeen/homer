@@ -18,6 +18,7 @@ setup(
         'save_map = homer_slam.operations:save_main',
         'record = homer_slam.operations:record_main',
         'baseline = homer_slam.baseline:main',
+        'mvp_check = homer_slam.mvp_check:main',
         'network = homer_slam.network:main',
     ]},
 )

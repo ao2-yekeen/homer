@@ -4,6 +4,10 @@ This page shows the robot's runtime components. For installation commands and fi
 paths, use the [Pi runtime guide](../../pi/README.md); for building and
 flashing, use the [main README](../../README.md#build-esp32-firmware).
 
+For staged development, see the [autonomous mapping and object-navigation
+roadmap](autonomous-mapping-object-navigation-plan.md) and the current
+[Section 1 MVP checklist](slam-section-1-validation-plan.md).
+
 ## Data and control flow
 
 ```mermaid

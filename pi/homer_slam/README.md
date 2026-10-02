@@ -4,6 +4,11 @@ ROS 2 Jazzy, RF2O laser odometry, and SLAM Toolbox. The Pi runs processing;
 RViz and recording run on the laptop. **Hotspot is primary; Tailscale is an
 explicit fallback.** No component here publishes motor commands.
 
+For the temporary LDS-01 Section 1 MVP, use the [step-by-step checklist](../../docs/architecture/slam-section-1-validation-plan.md).
+`ros2 run homer_slam mvp_check OUTPUT.json` captures live health; `--mode
+stationary` and `--mode return` capture tracking evidence. Physical trials
+require operator confirmation and visual checks before acceptance.
+
 ## Install and geometry
 
 Keep the repository at `~/mobile-robot` on the Pi. From that checkout:
