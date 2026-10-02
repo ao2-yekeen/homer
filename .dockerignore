@@ -1,0 +1,9 @@
+*
+!pi/
+!pi/homer_slam/
+!pi/homer_slam/**
+!simulation/
+!simulation/urdf/
+!simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf
+**/__pycache__
+**/*.pyc

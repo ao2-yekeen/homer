@@ -188,3 +188,9 @@ systemctl --user is-active esp32-serial-bridge.service robot-teleop.service game
 The `rplidar.service` unit publishes `/scan` from the RPLIDAR A1 using the
 runtime `mobile-robot-devices/lidar` link, which points to its fixed USB
 by-path location. The service restarts automatically if the driver exits.
+
+## Encoder-free SLAM and laptop RViz
+
+Use [the Homer SLAM guide](homer_slam/README.md) for URDF-based LiDAR odometry,
+mapping, saved-map localization, and the Jazzy RViz container. The laptop hotspot
+is the primary connection; Tailscale is an explicitly selected fallback.

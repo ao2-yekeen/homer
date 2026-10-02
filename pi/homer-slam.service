@@ -1,0 +1,14 @@
+[Unit]
+Description=Homer encoder-free LiDAR mapping (manual opt-in)
+After=rplidar.service
+Requires=rplidar.service
+
+[Service]
+Type=simple
+EnvironmentFile=%h/.config/homer-slam/network/ros.env
+EnvironmentFile=%h/.config/homer-slam/session.env
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source "$HOME/homer_slam_ws/install/setup.bash" && exec ros2 launch homer_slam mapping.launch.py min_range:=${HOMER_MIN_RANGE} max_range:=${HOMER_MAX_RANGE}'
+Restart=no
+
+[Install]
+WantedBy=default.target
