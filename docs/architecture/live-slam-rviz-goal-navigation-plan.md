@@ -39,12 +39,83 @@ Do not make faster RViz map rendering the prerequisite for this work.
 - Remote automatic motion remains stopped. This planning request does not
   restart hardware driving. Simulation precedes deployment.
 
+## Execution plan from the known failure to a working system
+
+The previous physical test already failed. Do not spend the first section
+reconfirming that fact or interpret another stationary check as a correction.
+Build and integrate the components below, starting with an offline estimator
+replacement experiment and an isolated simulation harness.
+
+### A. Establish usable robot pose
+
+Keep the LDS-01 driver. Create an offline recording/replay interface containing
+raw scans, camera images, calibration, TF and capture/receive timing. Audit the
+available evidence: pose JSON alone cannot reconstruct a failed scan match.
+Correct demonstrated frame/timing errors, then run RTAB-Map ICP as the first
+replacement candidate against RF2O on the same inputs. Keep SLAM Toolbox as the
+map backend initially to avoid replacing every working component at once.
+Only the chosen estimator publishes odom-to-base_link.
+
+Build a small known-trajectory simulator in parallel with this experiment.
+Compare metric displacement and heading, scan-registration quality, processing
+latency and failures. The accepted result is a selected and documented pose
+source that passes the movement gate, not an installation of another driver.
+
+Camera work: calibrate intrinsics/extrinsics, keep the head fixed and synchronize
+RGB with scans. Prototype visual feature tracking as an additional consistency
+cue. Neither commanded PWM nor camera optical flow alone is an independent
+metric distance reference. If the lidar replacement still fails, explicitly
+scope and validate a monocular/lidar scale-constrained estimator before enabling
+navigation. This fusion is development work, not an existing guaranteed plug-in.
+Do not add tags, assume ToF, silently enable encoders, or promise operation in
+scenes where both geometric and visual tracking are unobservable.
+
+### B. Make navigation commands meaningful on Homer
+
+Build a motor-command adapter with correct polarity, bounded acceleration and
+an explicit conversion from requested metric velocity to the existing PWM
+interface. Include the real firmware mode/watchdog behaviour in simulation.
+Keep a distinct actuator calibration stage: accurate pose alone does not make
+an arbitrary PWM scale equal metres/second. Real direction, response and braking
+remain physical measurements required before autonomous deployment.
+
+### C. Assemble goal navigation in isolated simulation
+
+Integrate the accepted pose source, SLAM Toolbox, Nav2, live lidar local costmap,
+Collision Monitor and the final command watchdog. Add RViz goal selection,
+path/status displays and cancellation. First demonstrate a clear short goal;
+then add one box forcing a detour. Retain three-second SLAM map publication
+unless measurements show a planning issue. Direct scan processing handles
+local obstacles independently of the RViz occupancy refresh.
+
+### D. Prove the assembled system handles failure
+
+Exercise blocked/occupied goals, an obstacle appearing during travel, inaccurate
+and stale poses, scan dropout, cancellation, takeover and laptop failure.
+Stop when no valid route or trustworthy motion estimate exists. Specifically
+retain the 50 cm actual / 9 cm estimated regression and the unintended-reversal
+case. A supervisor must not mark fresh messages as proof of accurate tracking.
+
+### E. Transfer and finish the working MVP
+
+Replay real sensors and run real-input shadow mode with motor output blocked.
+Qualify the laptop-to-Pi action/command/cancel connection. After the simulator
+and shadow gates pass, coordinate the separate short physical calibration and
+goal/obstacle tests. Freeze a reproducible launch/configuration only after those
+pass. The final output is one documented system where an RViz click starts a
+bounded goal, obstacles cause a detour or stop, and cancellation stops the robot.
+
+Immediate implementation deliverable: **the isolated moving-sensor simulation,
+recording/replay interface and ICP-versus-RF2O comparison report**. No autonomous
+hardware movement is part of that deliverable. Detailed gates below apply to
+all subsequent stages.
+
 ## Sections and acceptance gates
 
 Complete each section before relying on it in the next. Targets below are
 proposed engineering acceptance criteria, not measured performance.
 
-### 1. Small simulation and an accurate pose
+### 1. Correct or replace the failed pose estimator
 
 Deliver one laptop-only Gazebo Harmonic/ROS 2 Jazzy room, Homer geometry with
 stowed arm, actual LDS-01 timing/range and a rendered RGB camera. Keep the
