@@ -1,0 +1,47 @@
+# Fill with measured values; never use servo commands as measured camera pitch.
+enable_motion: false
+qualified: false
+views:
+  - {servo_deg: 90, tof_to_base: null}
+  - {servo_deg: 130, tof_to_base: null}
+settle_s: [4.0, 4.0] # provisional; replace after measurement
+search_s: 8.0
+rgb_shape: [480, 640]
+tof_shape: [180, 240]
+rgb_K: null
+rgb_D: null
+tof_K: null
+tof_D: null
+tof_to_rgb: null
+lidar_to_base: null
+depth_semantics: unvalidated
+depth_min_m: 0.05
+depth_max_m: 2.0
+floor_reject_m: 0.015
+max_floor_fraction: 0.2
+max_object_depth_span_m: 0.15
+min_samples: 12
+front_edge_m: null
+forward_command: null
+turn_command: null
+speed_mps: null
+braking_m: null
+uncertainty_m: null
+latency_p99_s: null
+capture_delay_bound_s: null
+lidar_front_limit_m: null
+lidar_half_width_m: null
+turn_clearance_radius_m: null
+rgb_frame: rgb_camera
+tof_frame: tof_camera
+intrinsics_measured: false
+alignment_measured: false
+poses_measured: false
+depth_validated: false
+buffer_delay_measured: false
+drive_measured: false
+braking_measured: false
+lidar_pose_measured: false
+stationary_distance_verified: false
+model_benchmarked: false
+movement_blocker: 'LATENCY_BLOCKER: Pi inference p99 0.988 s exceeds 0.500 s; calibration and drive measurements incomplete'

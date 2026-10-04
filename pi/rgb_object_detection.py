@@ -134,10 +134,11 @@ class RgbObjectDetection(Node):
             self.capture.release()
             self.capture = None
             return
+        acquisition_stamp = self.get_clock().now()
         height, width = frame.shape[:2]
         detection = detect_coloured_object(frame, self.lower_hsv, self.upper_hsv, self.min_area_px)
         image = Image()
-        image.header.stamp = self.get_clock().now().to_msg()
+        image.header.stamp = acquisition_stamp.to_msg()
         image.header.frame_id = "rgb_camera"
         image.height, image.width = height, width
         image.encoding = "bgr8"
@@ -147,7 +148,7 @@ class RgbObjectDetection(Node):
         try:
             self.image_pub.publish(image)
             payload = detection.as_dict(width, height)
-            payload["stamp_ns"] = self.get_clock().now().nanoseconds
+            payload["stamp_ns"] = acquisition_stamp.nanoseconds
             self.detection_pub.publish(String(data=json.dumps(payload, separators=(",", ":"))))
         except Exception:
             # SIGINT/SIGTERM can invalidate ROS between capture and publish.

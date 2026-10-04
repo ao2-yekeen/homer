@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Publish CSI Arducam ToF depth frames as ROS ``sensor_msgs/Image``.
+
+The camera SDK supplies a 240x180 float32 depth array in millimetres.  This
+node preserves those values on ``/tof_camera/depth/image_raw`` using the ROS
+``32FC1`` encoding; it does not command any robot hardware.
+"""
+
+from __future__ import annotations
+
+import time
+
+import ArducamDepthCamera as ac
+import numpy as np
+import rclpy
+from rclpy.executors import ExternalShutdownException
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+
+
+def depth_image(depth_mm: np.ndarray, stamp, frame_id: str) -> Image:
+    """Convert a two-dimensional float32 millimetre image into a ROS message."""
+    if depth_mm.ndim != 2:
+        raise ValueError("ToF depth frame must be a two-dimensional array")
+    depth_mm = np.ascontiguousarray(depth_mm, dtype=np.float32)
+    height, width = depth_mm.shape
+    message = Image()
+    message.header.stamp = stamp
+    message.header.frame_id = frame_id
+    message.height = height
+    message.width = width
+    message.encoding = "32FC1"
+    message.is_bigendian = False
+    message.step = width * depth_mm.dtype.itemsize
+    message.data = depth_mm.tobytes()
+    return message
+
+
+class TofDepthPublisher(Node):
+    def __init__(self) -> None:
+        super().__init__("tof_depth_publisher")
+        self.declare_parameter("fps", 10.0)
+        self.declare_parameter("frame_id", "tof_camera")
+        fps = float(self.get_parameter("fps").value)
+        self.frame_id = str(self.get_parameter("frame_id").value)
+        if fps <= 0:
+            raise ValueError("fps must be positive")
+
+        self.publisher = self.create_publisher(Image, "/tof_camera/depth/image_raw", 5)
+        self.camera = ac.ArducamCamera()
+        result = self.camera.open(ac.Connection.CSI, 0)
+        if result != 0:
+            raise RuntimeError(f"Cannot open CSI ToF camera (SDK code {result})")
+        result = self.camera.start(ac.FrameType.DEPTH)
+        if result != 0:
+            self.camera.close()
+            raise RuntimeError(f"Cannot start CSI ToF depth stream (SDK code {result})")
+        self.get_logger().info("CSI ToF camera opened")
+        self.create_timer(1.0 / fps, self.publish_frame)
+
+    def publish_frame(self) -> None:
+        frame = self.camera.requestFrame(1000)
+        if frame is None:
+            self.get_logger().warning("ToF frame request timed out")
+            return
+        acquisition_stamp = self.get_clock().now().to_msg()
+        try:
+            # The SDK owns the frame buffer, so copy before releasing it.
+            depth_mm = frame.depth_data.copy()
+        finally:
+            self.camera.releaseFrame(frame)
+        self.publisher.publish(depth_image(depth_mm, acquisition_stamp, self.frame_id))
+
+    def destroy_node(self) -> bool:
+        self.camera.stop()
+        self.camera.close()
+        return super().destroy_node()
+
+
+def main() -> None:
+    rclpy.init()
+    node: TofDepthPublisher | None = None
+    try:
+        node = TofDepthPublisher()
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()

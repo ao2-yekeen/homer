@@ -1,0 +1,10 @@
+ultralytics==8.3.203
+ncnn==1.0.20260526
+numpy==1.26.4
+opencv-python==4.11.0.86
+PyYAML==6.0.2
+# Workstation export: CPU wheels from https://download.pytorch.org/whl/cpu
+# torch==2.8.0+cpu; torchvision==0.23.0+cpu
+torch==2.8.0
+torchvision==0.23.0
+# Pi uses aarch64 wheels; workstation CPU wheels satisfy these versions.

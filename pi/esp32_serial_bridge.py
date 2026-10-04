@@ -10,12 +10,13 @@ from pathlib import Path
 
 import rclpy
 import serial
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, TwistStamped
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import Bool, Int32
 
+from autonomous_lease import AutonomousLease
 from esp32_port import candidates
 from serial_protocol import Decoder, encode
 
@@ -35,6 +36,9 @@ class Esp32SerialBridge(Node):
         self.sequence = 0
         self.mode_ready = False
         self.override_active = False
+        self.autonomous_mode = False
+        self.approach_mode = self.declare_parameter("approach_mode", False).value
+        self.lease = AutonomousLease()
         self.reconnects = 0
         self.candidate_list: list[str] = []
         self.odom_pub = self.create_publisher(Odometry, "/odom", 10)
@@ -43,7 +47,12 @@ class Esp32SerialBridge(Node):
         link_qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.link_pub = self.create_publisher(Bool, "/drive/link", link_qos)
         self.link_pub.publish(Bool(data=False))
-        self.create_subscription(Twist, "/cmd_vel", self._autonomous, 10)
+        self.authority_pub = self.create_publisher(Bool, "/drive/approach_authority", 1)
+        if self.approach_mode:
+            # No /cmd_vel subscription exists in this profile.
+            self.create_subscription(TwistStamped, "/approach_object/drive", self._leased_autonomous, 1)
+        else:
+            self.create_subscription(Twist, "/cmd_vel", self._autonomous, 10)
         self.create_subscription(Twist, "/teleop/cmd_vel", self._teleop, 10)
         self.create_subscription(Bool, "/set_autonomous", self._mode, 10)
         self.create_subscription(Int32, "/mode_override", self._override, 10)
@@ -76,6 +85,14 @@ class Esp32SerialBridge(Node):
     def _autonomous(self, message: Twist) -> None:
         self._drive("A", message)
 
+    def _leased_autonomous(self, message: TwistStamped) -> None:
+        if not self.connected or not self.mode_ready or self.override_active:
+            return
+        stamp = message.header.stamp.sec + message.header.stamp.nanosec * 1e-9
+        if self.lease.accept(stamp, self.get_clock().now().nanoseconds * 1e-9,
+                             time.monotonic(), message.twist.linear.x, message.twist.angular.z):
+            self._drive("A", message.twist)
+
     def _teleop(self, message: Twist) -> None:
         self._drive("T", message)
 
@@ -83,21 +100,33 @@ class Esp32SerialBridge(Node):
         if self.connected:
             self._send("M", int(message.data))
             self.mode_ready = True
+            self.autonomous_mode = bool(message.data)
+            self.lease.mode(self.autonomous_mode and not self.override_active, time.monotonic())
 
     def _override(self, message: Int32) -> None:
         if self.connected and -1 <= message.data <= 2:
             self._send("V", message.data)
             self.override_active = message.data >= 0
+            if self.approach_mode and self.override_active:
+                self._send("A", "0.0000", "0.0000")
+            self.lease.mode(self.autonomous_mode and not self.override_active, time.monotonic())
 
     def _neck(self, message: Int32) -> None:
         if self.connected and 80 <= message.data <= 150:
             self._send("N", message.data)
 
     def _disconnect(self, reason: str) -> None:
+        if self.connected and self.port is not None:
+            try:
+                self.port.write(encode("A", self.sequence, "0.0000", "0.0000"))
+            except (OSError, serial.SerialException):
+                pass
         if self.connected and rclpy.ok():
             self.get_logger().warning(f"ESP32 disconnected: {reason}; frame errors={self.decoder.errors}")
             self.link_pub.publish(Bool(data=False))
         self.connected = False
+        self.autonomous_mode = False
+        self.lease.mode(False, time.monotonic())
         self.boot_id = None
         self.mode_ready = False
         self.override_active = False
@@ -132,6 +161,8 @@ class Esp32SerialBridge(Node):
         if self.connected and self.boot_id == boot_id:
             return
         self.connected = True
+        self.autonomous_mode = False
+        self.lease.mode(False, time.monotonic())
         self.boot_id = boot_id
         self.mode_ready = False
         self.override_active = False
@@ -177,6 +208,9 @@ class Esp32SerialBridge(Node):
 
     def _tick(self) -> None:
         now = time.monotonic()
+        self.authority_pub.publish(Bool(data=bool(self.approach_mode and self.connected and self.mode_ready and self.autonomous_mode and not self.override_active and not self.lease.expired)))
+        if self.approach_mode and self.connected and self.lease.tick(now):
+            self._send("A", "0.0000", "0.0000")
         if self.port is None:
             if now >= self.next_attempt:
                 self._open_next(now)
