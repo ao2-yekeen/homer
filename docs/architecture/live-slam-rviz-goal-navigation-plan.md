@@ -11,6 +11,10 @@ independent peer-reviewed corroboration, actual hardware compatibility and
 reproducible validation. One paper and its code repository count as one study;
 claims lacking comparable independent evidence remain provisional.
 
+For the time-constrained implementation sequence, use the
+[fast MVP schedule](slam-rviz-navigation-fast-mvp-plan.md). It narrows the
+initial scope while retaining the accuracy and deployment gates below.
+
 ## Goal and first demonstration
 
 Start Homer without loading a map. SLAM builds a live map. The operator selects
