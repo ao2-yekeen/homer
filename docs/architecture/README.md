@@ -75,6 +75,81 @@ checks. Record every measured configuration, result and failure here. Final
 acceptance still requires centred target, no contact, no unintended reversal and
 explicit restart after faults.
 
+### Image-derived head-angle mapping — 2026-10-04
+
+The operator reports an approximately 90° angle between the startup camera view
+and the vertical mast. Treat that as an approximate horizontal optical reference.
+Firmware initializes the head at command 120°, with 50 Hz PWM,
+`pulse_us = 500 + floor(2000*command/180)`, and a 1°/50 ms command ramp.
+A Pi-only restart does not reset the ESP32 head pose. Commands are not shaft
+feedback. The URDF identifies the neck as MG996; the
+[Tower Pro positional MG996R page](https://towerpro.com.tw/product/mg995-robot-servo-180-rotation/)
+lists a 180° variant, but does not establish this unit's pulse-to-angle mapping.
+
+After advance notification and explicit operator authorization, only the head
+was commanded through 80°, 90°, 100°, 110°, 120°, 130°, 140°, 150°, then back to
+80°. Each view was captured after 3.5 s of settling; fresh RGB image receipt
+ages were 13–67 ms. No base or arm commands were issued. Evidence is on the Pi
+at `~/homer-evidence/approach-object/head-angle-mapping` and on the workstation
+at `/tmp/head-angle-mapping`. Preserve those captures before clearing temporary
+files. Capture records contain requested commands, not device acknowledgements.
+
+`tools/estimate_head_mapping.py` fits SIFT feature correspondences between
+neighbouring views, selects homography inliers, and jointly estimates a shared
+focal length and camera rotations with robust least squares. It composes the
+rotations to estimate optical-axis elevation relative to view 120°. This is
+scene-based estimation, not a reused assumption of one degree per command.
+
+The operator's angle convention is relative to the vertical mast: 90° is
+horizontal, below 90° looks down and above 90° looks up. Convert downward pitch
+to that convention with `mast_view_angle_est_deg = 90 - pitch_down_est_deg`.
+Servo command 120° and mast viewing angle 90° therefore describe different things.
+
+| Requested servo command | Estimated downward pitch | Estimated mast viewing angle |
+| --- | --- | --- |
+| 80° | approximately +36° | approximately 54° |
+| 90° | approximately +29° | approximately 61° |
+| 100° | approximately +19° | approximately 71° |
+| 110° | approximately +10° | approximately 80° |
+| 120° | 0° reference | approximately 90° |
+| 130°, 140°, 150° | no appreciable additional rotation observed | approximately 90° in this run |
+
+The upper commands produced nearly unchanged fresh images: each fitted change
+above 120° was below 0.02°. **Do not extrapolate the lower mapping above 120° or
+assume the commanded pose was reached.** Cause is unresolved (command delivery,
+installed firmware limits or mechanical response); this run cannot distinguish
+these. No repeated attempt to push the upper range was performed. The earlier
+150° image showed a different upward view, so this plateau is specific to the
+current run rather than proof of a permanent mechanical limit.
+
+The fit used 775–1506 inliers per pair, estimated focal length 546.75 px, and
+moving-pair median reprojection errors of 1.01–1.96 px (95th percentiles
+2.35–3.93 px). It assumes square pixels, a centred principal point and pure
+rotation; distortion and camera translation about the pivot can bias the angles.
+Reprojection error is not a bound on physical pitch error. The absolute startup
+reference remains approximate. RGB and ToF may also have different fixed optical
+mounting offsets despite tilting together. This diagnostic does not populate
+measured intrinsics or transforms and is not used by the motion controller.
+
+Reproduce the offline estimate with the existing workstation detector environment
+(which includes OpenCV, NumPy and SciPy):
+
+```bash
+OPENBLAS_NUM_THREADS=1 python pi/approach_object/tools/estimate_head_mapping.py \
+  --input /path/to/head-angle-mapping
+```
+
+Use a supported image-derived pose only after settling, and include each depth
+pixel's ray direction and the fixed ToF optical offset. For radial range in the
+forward vertical plane, horizontal distance is `r*cos(ray_down_angle)`; general
+rays require a 3D transform. Select reliable samples from the floor-contact band
+**inside the object's native ToF mask**, transform each sample, then aggregate
+forward coordinates and subtract the robot-front offset. Account for camera
+translation around the pivot. A whole-mask median and centre-ray tilt do not
+represent the floor-contact point. Keep `poses_measured: false`,
+`qualified: false`, `enable_motion: false` and **REQUIRES_HARDWARE_TEST** until
+pose consistency, upper-command response and distance accuracy are verified.
+
 ### Build, model export and launch
 
 On the Pi, keep the detector environment separate from capture services:
