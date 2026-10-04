@@ -71,3 +71,13 @@ estimated backward direction as proof the hardware moved backward.
 
 Evidence: Pi `~/homer-evidence/section-1-mvp/measured30-20261004-092031.json`,
 with a workstation copy alongside the preceding JSON files.
+
+The operator said the first movement was approximately the reported value and
+requested a repeat. The second attempt also stopped on direction: estimated
+3.53 cm backward, 0.66 cm left, heading +1.18°. Motor outputs zero. Evidence is
+`measured30-20261004-092242.json` in the same Pi and workstation directories.
+The operator's earlier approximate-value reply did not specify physical travel
+direction; forward/backward confirmation was requested after this repeat.
+Do not reverse motor commands or rotate the lidar transform on that ambiguous
+reply alone. Distinguish physical motor direction from sensor orientation before
+attempting the full 30 cm again.
