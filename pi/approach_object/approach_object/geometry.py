@@ -10,8 +10,9 @@ def transform(points, matrix):
         raise ValueError('rotation must be orthonormal')
     return points @ m[:3, :3].T + m[:3, 3]
 
-def estimate(depth_mm, mask, c, view):
-    if depth_mm.shape != tuple(c['tof_shape']) or mask.shape != tuple(c['rgb_shape']):
+def project_depth(depth_mm, c):
+    """Return aligned RGB pixels and matching ToF optical points, without resizing depth."""
+    if depth_mm.shape != tuple(c['tof_shape']):
         raise ValueError('uncalibrated image dimensions')
     yy, xx = np.indices(depth_mm.shape)
     d = depth_mm.ravel().astype(float) * .001
@@ -30,9 +31,15 @@ def estimate(depth_mm, mask, c, view):
         raise ValueError('insufficient valid depth')
     projected, _ = cv2.projectPoints(rgb, np.zeros(3), np.zeros(3), np.array(c['rgb_K'], float), np.array(c['rgb_D'], float))
     pix = np.rint(projected.reshape(-1, 2)).astype(int)
-    h, w = mask.shape
+    h, w = c['rgb_shape']
     inside = (pix[:, 0] >= 0) & (pix[:, 0] < w) & (pix[:, 1] >= 0) & (pix[:, 1] < h)
     pix, points = pix[inside], points[inside]
+    return pix, points
+
+def estimate(depth_mm, mask, c, view):
+    if mask.shape != tuple(c['rgb_shape']):
+        raise ValueError('uncalibrated image dimensions')
+    pix, points = project_depth(depth_mm, c)
     # Erosion avoids mixed pixels at the silhouette boundary.
     clean_mask = cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8))
     points = points[clean_mask[pix[:, 1], pix[:, 0]] > 0]

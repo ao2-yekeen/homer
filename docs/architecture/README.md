@@ -259,6 +259,58 @@ offboard inference with acquisition timestamps and the existing Pi-local lease
 supervisor; a network failure must still stop the base. AprilTag remains a
 conditional alternative, not a silent change to the unmarked-object task.
 
+### YOLOE bottle mask and RGB/ToF capture — 2026-10-04
+
+Operator selected YOLOE and confirmed **both cameras tilt together**. Treat the
+pair as a rigid mount: measure RGB/ToF intrinsics and one optical ToF→RGB
+transform, then measure ToF→base at each useful tilt view. Verify that the mount
+remains rigid across tilt changes; servo commands alone do not supply that pose.
+
+Added `tools/capture_rgb_tof.py`, which only subscribes to existing image topics
+and saves a fresh pair with acquisition stamps, frame IDs and raw millimetre
+depth. Added `tools/yoloe_depth_preview.py`, a workstation-only reference matcher
+using the checked YOLOE-26n-seg checkpoint. It saves the bottle mask and annotated
+RGB image, and uses the same projection/filtering code as the approach detector
+for a calibrated ToF-point overlay and front-edge clearance. It has no ROS or
+command authority and does not replace the autonomous detector yet. Movement
+qualification remains independent of this stationary diagnostic.
+
+A new stationary capture had RGB/ToF timestamp separation **43.56 ms**. YOLOE
+found one reference match, score **0.9654**, box approximately
+`[215,241,337,429]`; the inspected mask covered the actual bottle. Distance was
+explicitly withheld (`clearance_m: null`): intrinsics, alignment, depth range
+interpretation, tilt poses and robot front-edge offset remain unmeasured.
+No camera or base motion was commanded. Files are on the Pi under
+`~/homer-evidence/approach-object/yoloe-depth/` and locally under
+`/tmp/homer-yoloe-depth/`. The first capture invocation exposed a ROS callback
+signature incompatibility with deque.append; wrapping callbacks fixed it, and
+the subsequent live capture succeeded. Projection/depth safety tests: 28 passed.
+
+Run capture with the existing ROS/network environment sourced on the Pi:
+
+```bash
+python3 tools/capture_rgb_tof.py --output /tmp/bottle-capture
+```
+
+Copy that directory to the workstation. In the isolated Ultralytics 8.4.173
+screening environment, include `pi/approach_object` on PYTHONPATH and run:
+
+```bash
+python pi/approach_object/tools/yoloe_depth_preview.py \
+  --model /tmp/homer-detector-models/yoloe-26n-seg.pt \
+  --reference /tmp/homer-view-80.png --box 215 239 339 434 \
+  --capture /tmp/bottle-capture \
+  --calibration pi/approach_object/config/calibration.yaml --view 0
+```
+
+`--view` must describe the measured capture pose before using distance. The
+current placeholder calibration intentionally produces only a recognition
+image, without a fabricated depth overlay or distance. Next: calibrate and
+inspect projected depth on bottle, floor and background, then compare the
+nearest-surface/front-edge estimate with tape measurements at several ranges
+including 30 cm. Keep `enable_motion: false`. Rollback: stop these diagnostic
+commands; they do not alter live capture services or control processes.
+
 All physical calibration, motor-blocked two-view qualification, measured drive
 commands, tape checks and physical approaches remain outstanding.
 **REQUIRES_HARDWARE_TEST** remains in force; no base-motion commands have been
