@@ -122,6 +122,41 @@ these. No repeated attempt to push the upper range was performed. The earlier
 150° image showed a different upward view, so this plateau is specific to the
 current run rather than proof of a permanent mechanical limit.
 
+#### Full-range follow-up and viewing angles above 90°
+
+At the operator's request, a subsequent head-only sweep commanded 80° → 150° →
+80°, holding each command for 7 s before capturing a fresh image. The 150° view
+clearly includes the ceiling: the upper range **did move on this follow-up**.
+The head returned to its downward view at 80°. The earlier lack of upper motion
+is an inconsistent response, not a calibrated upper-angle plateau; its cause
+remains unresolved. Do not use the first run's 130–150° rows as a physical mapping.
+
+Combining the original 80–120° captures with this successful 150° capture gives
+an estimated upward pitch of **31.16°**, or **121.16° in the mast-angle convention**,
+at command 150°. The 120°→150° pair had 32 homography inliers and median/95th
+percentile rotation reprojection errors of 0.64/1.51 px. Its substantially lower
+feature support warrants greater caution than the lower-range estimates.
+
+| Servo command | Estimated mast viewing angle | Basis |
+| --- | --- | --- |
+| 120° | approximately 90° | operator reference |
+| 130° | approximately 100° | interpolation between 120° and successful 150° |
+| 140° | approximately 111° | interpolation between 120° and successful 150° |
+| 150° | approximately 121° | successful upward-view image fit |
+
+For an initial upper-range estimate only, use
+`mast_view_angle_est_deg = 90 + (command - 120)*31.16/30` within 120–150°.
+The intermediate values are **interpolated, not separately observed**. Distortion,
+principal-point assumptions, pivot translation and the approximate absolute
+reference still apply. Successful image motion is not servo position feedback.
+No autonomous-motion qualification or configuration gate changed.
+
+Follow-up evidence is `~/homer-evidence/approach-object/head-full-range` on the Pi
+and `/tmp/head-full-range` on the workstation. The combined offline input and
+result are `/tmp/head-map-complete`, mirrored to the Pi evidence directory as
+`head-map-complete`; run the same estimator against this directory to reproduce
+the extended mapping. Original first-run captures were preserved separately.
+
 The fit used 775–1506 inliers per pair, estimated focal length 546.75 px, and
 moving-pair median reprojection errors of 1.01–1.96 px (95th percentiles
 2.35–3.93 px). It assumes square pixels, a centred principal point and pure
