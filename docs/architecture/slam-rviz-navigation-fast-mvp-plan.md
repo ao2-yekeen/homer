@@ -1,5 +1,8 @@
 # Time-boxed MVP: real-world SLAM and RViz goal navigation
 
+For executable section-by-section instructions, code entry points and handoff
+requirements, see the [implementation agent handover](agent-handover-camera-lidar-rviz-navigation.md).
+
 Date: 2026-10-04. Status: plan only; implementation and physical qualification
 remain outstanding. Latest user instruction: skip simulation and test in reality.
 This supersedes the simulation prerequisite in earlier plans. Offline replay

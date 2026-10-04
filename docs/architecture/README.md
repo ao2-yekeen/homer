@@ -4,7 +4,8 @@ This page shows the robot's runtime components. For installation commands and fi
 paths, use the [Pi runtime guide](../../pi/README.md); for building and
 flashing, use the [main README](../../README.md#build-esp32-firmware).
 
-Start with the [time-boxed navigation MVP plan](slam-rviz-navigation-fast-mvp-plan.md).
+Implementation agents: start with the [camera–lidar navigation handover](agent-handover-camera-lidar-rviz-navigation.md),
+then the [time-boxed navigation MVP plan](slam-rviz-navigation-fast-mvp-plan.md).
 
 Current priority: [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md),
 validated through short measured real-world checks under the latest user
