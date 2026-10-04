@@ -311,6 +311,59 @@ nearest-surface/front-edge estimate with tape measurements at several ranges
 including 30 cm. Keep `enable_motion: false`. Rollback: stop these diagnostic
 commands; they do not alter live capture services or control processes.
 
+### Nominal field-of-view overlap — 2026-10-04
+
+Operator clarified that overlap means **viewing geometry**, without cross-image
+feature matching, and requested proceeding without physical measurement.
+`tools/fov_overlap_preview.py` now draws nominal ToF frustum footprints on RGB
+at 0.5, 1 and 2 m optical depth and projects raw ToF samples into the YOLOE mask.
+No feature detector or image registration is used. The preview has no command
+authority and never reports verified robot-front clearance.
+
+USB enumeration confirms Logitech C930e. Its [manufacturer datasheet](https://secure.logitech.com/assets/47868/logitech-webcam-c930e-data-sheet.pdf)
+specifies 90° diagonal FOV. The [Arducam overview](https://docs.arducam.com/Raspberry-Pi-Camera/Tof-camera/TOF-Camera/)
+lists 70° diagonal FOV for the 240×180 camera family; its product row also lists
+different horizontal/vertical angles, so the exact lens/mode remains unverified.
+The existing measured robot URDF puts RGB and ToF centres 0.04 m apart along
+the camera bar. Diagnostic assumptions are parallel optical axes, centred
+uncropped pinhole images, nominal family FOV and radial millimetre ToF range.
+They do not replace calibrated intrinsics/extrinsics. In particular, current
+640×480 webcam cropping/zoom and optical alignment have not been established.
+
+```bash
+PYTHONPATH=pi/approach_object python pi/approach_object/tools/fov_overlap_preview.py \
+  --capture /tmp/homer-yoloe-overlap \
+  --rgb-diagonal-deg 90 --tof-diagonal-deg 70 --baseline-x-m .04
+```
+
+To inspect sensor quality, the existing ToF capture owner now also publishes raw
+SDK amplitude and confidence on `/tof_camera/amplitude/image_raw` and
+`/tof_camera/confidence/image_raw`, with the depth acquisition stamp. SDK support
+was checked locally and against [Arducam's API](https://www.arducam.com/docs/tof-camera-getting-started/API/Python_API.html).
+The updated publisher was copied to the Pi and only
+`tof-depth-publisher.service` was restarted. RGB/control services were untouched;
+no camera/base/arm motion was commanded. `capture_rgb_tof.py --auxiliary` requires
+these streams from the same depth frame, while retaining the 80 ms RGB/ToF gate.
+The fresh capture passed at **65.52 ms** separation, and YOLOE again selected one
+bottle mask (score **0.9634**).
+
+Depth, amplitude and confidence previews all appeared noise-like. Approximately
+29.6% of raw depth pixels were exactly zero; repeated 500 mm increments dominate
+the nonzero values. Nominal projection selected 3026 samples inside the eroded
+bottle mask, with 5th/median/95th percentiles **0.5/2.0/3.5 m**. These are raw
+diagnostic statistics, **not a bottle distance**. Therefore next work is to
+diagnose ToF acquisition/SDK/configuration before using FOV overlap for ranging.
+No sensor failure cause has yet been established. Evidence is under
+`~/homer-evidence/approach-object/yoloe-overlap/` on the Pi and
+`/tmp/homer-yoloe-overlap/` locally. Workstation task tests: 34 passed, 2 ROS-only
+skips; live auxiliary capture succeeded. Roll back the publisher if needed:
+
+```bash
+cp ~/homer-evidence/approach-object/tof-publisher-before-auxiliary.py \
+  ~/mobile-robot/pi/tof_depth_publisher.py
+systemctl --user restart tof-depth-publisher.service
+```
+
 All physical calibration, motor-blocked two-view qualification, measured drive
 commands, tape checks and physical approaches remain outstanding.
 **REQUIRES_HARDWARE_TEST** remains in force; no base-motion commands have been

@@ -47,6 +47,8 @@ class TofDepthPublisher(Node):
             raise ValueError("fps must be positive")
 
         self.publisher = self.create_publisher(Image, "/tof_camera/depth/image_raw", 5)
+        self.amplitude_publisher = self.create_publisher(Image, "/tof_camera/amplitude/image_raw", 5)
+        self.confidence_publisher = self.create_publisher(Image, "/tof_camera/confidence/image_raw", 5)
         self.camera = ac.ArducamCamera()
         result = self.camera.open(ac.Connection.CSI, 0)
         if result != 0:
@@ -67,9 +69,14 @@ class TofDepthPublisher(Node):
         try:
             # The SDK owns the frame buffer, so copy before releasing it.
             depth_mm = frame.depth_data.copy()
+            amplitude = frame.amplitude_data.copy()
+            confidence = frame.confidence_data.copy()
         finally:
             self.camera.releaseFrame(frame)
         self.publisher.publish(depth_image(depth_mm, acquisition_stamp, self.frame_id))
+        # Raw SDK values, not millimetres. Shared stamp identifies the same exposure.
+        self.amplitude_publisher.publish(depth_image(amplitude, acquisition_stamp, self.frame_id))
+        self.confidence_publisher.publish(depth_image(confidence, acquisition_stamp, self.frame_id))
 
     def destroy_node(self) -> bool:
         self.camera.stop()
