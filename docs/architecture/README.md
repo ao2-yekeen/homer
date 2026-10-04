@@ -5,7 +5,9 @@ paths, use the [Pi runtime guide](../../pi/README.md); for building and
 flashing, use the [main README](../../README.md#build-esp32-firmware).
 
 Current priority: [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md),
-validated in simulation before hardware deployment.
+validated in simulation before hardware deployment. The
+[peer-reviewed assumptions audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
+records which claims are supported and which still require experiments.
 
 For longer-term staged development, see the [unknown-environment object-search and pickup
 roadmap](autonomous-mapping-object-navigation-plan.md) and the current

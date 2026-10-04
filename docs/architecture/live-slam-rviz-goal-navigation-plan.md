@@ -4,6 +4,10 @@ Date: 2026-10-04. Status: plan only; implementation and physical qualification
 remain outstanding. Current priority supersedes the earlier object-search and
 pickup MVP. Pickup and autonomous frontier exploration are deferred.
 
+Peer-reviewed audit: [assumptions, supporting papers and corrections](slam-navigation-peer-reviewed-assumptions-2026-10-04.md).
+The architecture is supported; the estimator choice and physical operating
+envelope remain experimental.
+
 ## Goal and first demonstration
 
 Start Homer without loading a map. SLAM builds a live map. The operator selects
@@ -54,14 +58,22 @@ available evidence: pose JSON alone cannot reconstruct a failed scan match.
 Correct demonstrated frame/timing errors, then run RTAB-Map ICP as the first
 replacement candidate against RF2O on the same inputs. Keep SLAM Toolbox as the
 map backend initially to avoid replacing every working component at once.
-Only the chosen estimator publishes odom-to-base_link.
+Only the chosen estimator publishes odom-to-base_link. RF2O’s ICRA 2016 paper
+outperformed its tested PL-ICP comparator; ICP is not a predetermined upgrade.
+The approximately 5 Hz scan rate alone does not establish the failure cause.
 
 Build a small known-trajectory simulator in parallel with this experiment.
 Compare metric displacement and heading, scan-registration quality, processing
-latency and failures. The accepted result is a selected and documented pose
+latency and failures. Fault injection of the observed scale error tests supervisor behaviour; it
+does not diagnose why the physical estimator failed. The accepted result is a selected and documented pose
 source that passes the movement gate, not an installation of another driver.
 
-Camera work: calibrate intrinsics/extrinsics, keep the head fixed and synchronize
+Camera work: first verify that the lidar plane projects into the camera view
+and produces useful visual/range correspondences. Chiodini et al. (IEEE TIM
+2020) support monocular/planar-lidar scale recovery using calibrated associations
+and optimization, not raw optical flow alone. No reusable ROS 2 implementation
+for Homer or adequate processing rate has yet been verified.
+Calibrate intrinsics/extrinsics, keep the head fixed and synchronize
 RGB with scans. Prototype visual feature tracking as an additional consistency
 cue. Neither commanded PWM nor camera optical flow alone is an independent
 metric distance reference. If the lidar replacement still fails, explicitly
@@ -113,7 +125,9 @@ all subsequent stages.
 ## Sections and acceptance gates
 
 Complete each section before relying on it in the next. Targets below are
-proposed engineering acceptance criteria, not measured performance.
+proposed engineering acceptance criteria, not measured performance or limits
+established by the reviewed papers. Derive deployment clearance and thresholds
+from actual footprint, acquisition/processing age, error and braking measurements.
 
 ### 1. Correct or replace the failed pose estimator
 
