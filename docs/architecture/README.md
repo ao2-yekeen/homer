@@ -44,8 +44,9 @@ serial bridge fails; bridge-local expiry covers supervisor failure.
 `config/calibration.yaml` ships with `enable_motion: false`, missing measurements
 and all qualification flags false. Start requests fail until measured calibration
 is provided. The two provisional servo commands (90°/130°) are within 80–150°;
-they are **not measured camera pitches or qualified viewing angles**. No physical
+they are **not measured camera pitches or qualified viewing angles**. No base
 motion, firmware flashing or live service changes were performed for this task.
+Camera tilt was later exercised at the operator's explicit request (see results).
 
 Record RGB/ToF K matrices and distortion, optical ToF→RGB transform, optical
 ToF→base transforms at both views, settling times, image buffering bound, depth
@@ -168,8 +169,20 @@ These limited samples do not qualify sustained runtime latency. The stationary
 image benchmark does not prove bottle/cup recognition in both physical views.
 
 A bounded live recognition preview subscribed to the existing camera without
-starting the supervisor or serial bridge. No bottle was detected in the current
-view; the operator was asked to place a target. This is not a two-view or motion
+starting the supervisor or serial bridge. No bottle was detected initially; the operator then placed a black bottle
+and explicitly requested camera tilt. Commands 80° and 150° were issued with
+advance notification and a provisional five-second settling pause. Saved frames
+show that 80° points down and includes the bottle, while 150° points upward and
+excludes it. The camera was returned to 80° with advance notification. These
+observations establish viewing direction only, not measured optical pitch.
+
+YOLO11n-seg at 320 did not confirm the bottle in either live preview. An offline
+comparison of the 80° frame found a weak `vase` detection (~0.19 NCNN / ~0.14
+PyTorch), with no bottle detection even at a diagnostic 0.05 confidence threshold.
+PyTorch at 640 also failed to identify the bottle. The current pretrained model
+therefore has a **RECOGNITION_BLOCKER for this black bottle**; do not relabel a
+vase as a bottle or enable approach. Images/logs are
+`~/homer-evidence/approach-object/view-80.*` and `view-150.*`. This is not a two-view or motion
 qualification. For stationary previews, run the detector with
 `--ros-args -p recognition_target:=bottle` (or `cup`), plus the calibration/model
 parameters. Preview mode publishes observations only and cannot issue drive or
@@ -177,7 +190,8 @@ neck commands.
 
 All physical calibration, motor-blocked two-view qualification, measured drive
 commands, tape checks and physical approaches remain outstanding.
-**REQUIRES_HARDWARE_TEST** remains in force; no motion commands have been issued.
+**REQUIRES_HARDWARE_TEST** remains in force; no base-motion commands have been
+issued. Only the explicitly requested and announced camera-tilt checks ran.
 
 ## Data and control flow
 
