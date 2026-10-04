@@ -81,3 +81,26 @@ direction; forward/backward confirmation was requested after this repeat.
 Do not reverse motor commands or rotate the lidar transform on that ambiguous
 reply alone. Distinguish physical motor direction from sensor orientation before
 attempting the full 30 cm again.
+
+## Forward-command retry: failed physical distance bound
+
+After the operator confirmed physical backward travel, the next temporary test
+used negative drive commands to request physical forward travel. RF2O reported
+8.99 cm forward and 9.59° heading change; the script stopped on its heading limit.
+Motor outputs were zero afterward. Evidence:
+`measured30-20261004-092340.json` in the same Pi/workstation directories.
+
+The operator measured approximately **50 cm**, and reported backward motion near
+the end. This exceeds the intended 30 cm by about 20 cm. Estimated forward travel
+was about 82% below the approximate physical measurement. The test failed to
+bound physical travel; trusting unvalidated lidar odometry as its sole distance
+cutoff was inappropriate. Telemetry records negative commands (-0.35, -0.45)
+then zero, with about 5.8 s between first and last nonzero status and duty up to
+99/255. It does not explain the observed end reversal.
+
+Remote automatic motion tests are stopped. Do not resume them using previous
+authorization. The user requested camera–lidar research and simulation before
+deployment; see [the review](slam-camera-fusion-literature-review-2026-10-04.md)
+and [simulation-first plan](slam-simulation-validation-plan.md). No firmware,
+TF polarity, estimator tuning or map-refresh changes were deployed as a result
+of this failure. Motor zero was reconfirmed through `/drive/status`.

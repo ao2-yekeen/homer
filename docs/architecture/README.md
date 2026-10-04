@@ -8,6 +8,12 @@ For staged development, see the [autonomous mapping and object-navigation
 roadmap](autonomous-mapping-object-navigation-plan.md) and the current
 [Section 1 MVP checklist](slam-section-1-validation-plan.md).
 
+Current SLAM work requires simulation and offline replay before deployment.
+Remote automatic movement tests are stopped after the 50 cm / 9 cm discrepancy.
+See the [camera–lidar literature review](slam-camera-fusion-literature-review-2026-10-04.md),
+[simulation-first validation plan](slam-simulation-validation-plan.md), and
+[physical test results](slam-accuracy-2026-10-04.md).
+
 ## Data and control flow
 
 ```mermaid
