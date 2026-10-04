@@ -401,6 +401,26 @@ qualification gate has been enabled; **REQUIRES_HARDWARE_TEST** remains.
 Arducam documents the supported range controls in its
 [SDK controls reference](https://www.arducam.com/docs/tof-camera-getting-started/Example/controls.html).
 
+### White-surface response check — 2026-10-04
+
+The operator placed a white lined sheet in front of the cameras. RGB capture
+visually confirmed the sheet covers most of the image. Three fresh synchronized
+RGB/ToF captures had separations of 31.48, 13.43 and 18.61 ms. All three ToF
+images retained noise-like structure: depth 5th/median/95th percentiles were
+0/1000/3500 mm, and amplitude percentiles were 0/8/17.89, essentially unchanged
+from the bottle-only scene. Only 0.030–0.032% of amplitude samples exceeded 30
+(diagnostic statistic, not an established validity gate). The white surface
+therefore did not recover a usable depth image in this setup. Exact placement
+within the ToF frustum has not been independently verified.
+
+This weakens the dark-bottle-only explanation; illumination/power delivery,
+obstruction, sensor configuration and driver remain unconfirmed possibilities.
+A connected separate power cable does not establish voltage at the sensor.
+No hardware failure is declared. Evidence is in the Pi directories
+`~/homer-evidence/approach-object/tof-white-surface{,-2,-3}/`; the first capture
+is also in `/tmp/homer-tof-white-surface/` locally. These checks used only ROS
+subscriptions: no service changes or base/arm/camera motion commands.
+
 ## Data and control flow
 
 ```mermaid
