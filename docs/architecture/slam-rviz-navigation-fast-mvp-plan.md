@@ -1,117 +1,106 @@
-# Time-boxed MVP: live SLAM and RViz goal navigation
+# Time-boxed MVP: real-world SLAM and RViz goal navigation
 
-Date: 2026-10-04. Status: planned, not implemented or qualified.
+Date: 2026-10-04. Status: plan only; implementation and physical qualification
+remain outstanding. Latest user instruction: skip simulation and test in reality.
+This supersedes the simulation prerequisite in earlier plans. Offline replay
+and motor-disconnected checks remain useful real-data checks, not simulation.
 
 ## Outcome
 
-Start with an empty map. Select a reachable destination in RViz. Homer plans
-a route, avoids a lidar-visible obstacle, and stops at the goal. Occupied or
-unreachable goals fail cleanly. Cancellation and invalid inputs stop commands.
-First demonstrate this in isolated simulation, then qualify it on the robot.
+Start with an empty map, choose a destination in RViz, navigate around a
+lidar-visible obstacle and stop at the goal. Reject occupied/unreachable goals.
+Use short tests and retain independent measurements. The previous 50 cm actual /
+approximately 9 cm estimated failure is established; do not repeat its automatic
+distance-limited script. Map publication speed is secondary.
 
-The known 50 cm actual / approximately 9 cm estimated failure is established.
-The first task is to correct or replace its failed pose source, not repeat the
-same automatic tape test. Map display refresh is secondary.
+## Real-world implementation sequence
 
-## Schedule and decisions
+Budgets are initial work allocations, not completion guarantees. Assess each
+result before the next stage. Estimator installation, motor calibration or
+processing problems may require another session; time pressure does not turn
+a failed result into a pass.
 
-Budgets below are work allocation targets, not completion guarantees. Aim for
-one 4–6 hour software session, assuming dependencies install cleanly. Pause at
-each deliverable to assess the next stage. Robot qualification is a separate
-session whose duration depends on measured motor response and stopping.
-
-| Order | Budget | Concrete work | Required result / decision |
+| Order | Initial budget | Work | Decision / deliverable |
 | --- | --- | --- | --- |
-| 1. Evidence and compatibility | 30 minutes | Inspect existing failure logs, mounting axes/TF, scan stamps and firmware commands; inventory raw recordings and available ROS/Gazebo dependencies | List demonstrated faults, missing data and what can be replayed; do not infer a root cause from pose JSON |
-| 2. Minimum simulator | 90–120 minutes | One room, Homer geometry, LDS-01 scan timing/range, known 30 cm and turn trajectories, isolated ROS clock/network; bridge real estimator inputs and record independent truth | Moving sensor/estimator run with scored pose; no perfect simulator odometry supplied to navigation |
-| 3. Select pose source | 60–90 minutes | Correct demonstrated input/config errors; compare RF2O and RTAB-Map ICP on identical nominal and weak-geometry inputs | Select an estimator only if movement accuracy and tracking-quality checks pass; neither is predetermined to win |
-| 4. Goal navigation and actuator boundary | 60–90 minutes | Retain SLAM Toolbox; configure Nav2, footprint, direct-scan local obstacles, RViz goal/cancel, watchdog; simulate bounded actuator response and actual command conversion | Clear-space goal and obstacle detour; explicitly report unknown real PWM-to-speed calibration |
-| 5. Short regression suite and handover | 30–45 minutes | Run blocked-goal, cancellation, scan/pose loss and injected underestimation/reversal cases; save commands, configs and reports | No contacts or unintended reverse; stop/failure behaviour passes; document limits and rollback |
+| 1. Inspect and prepare | 15–30 minutes | Read current Pi services/configuration; verify estimator/TF ownership, scan axes/timing and rigid sensor mounting; prepare scan/RGB/TF/status recording | Identify demonstrated configuration issues and missing calibration; motor output remains blocked |
+| 2. Obtain measured real data | 10–15 minutes with operator | Record a short operator-controlled movement of 20–30 cm and a small turn, using tape/video references and existing teleop | Raw sensor bag plus independent displacement/heading reference; no automatic distance stop based on RF2O |
+| 3. Correct/select odometry | 45–90 minutes | Fix demonstrated frame/timing errors; replay the same bag through RF2O and one ICP alternative | Select only a candidate passing accuracy and quality checks; one live odometry/TF owner |
+| 4. Qualify drive and stops | 20–45 minutes with operator | Verify command polarity, actual speed response, braking, cancellation and Pi watchdog with bounded commands and independent measurements | Document a low-speed operating envelope and metric-command conversion; no reversal at completion |
+| 5. Add Nav2 and RViz goals | 45–90 minutes | Connect accepted odometry, live SLAM, footprint, lidar local costmap, collision monitor, watchdog, goal tool and cancellation; check output with motors blocked | Reproducible launch and working bidirectional goals/actions/cancel transport |
+| 6. Short navigation checks | 10–20 minutes with operator | One nearby free-space goal; one stationary obstacle detour; one occupied goal; cancellation | Independent endpoint measurement, no contact/unintended reverse, correct failure and stop behaviour |
 
-These budgets prioritize a small prototype. If simulator/adapter setup exceeds
-its budget, use the next session to finish that dependency rather than hide it
-with ideal velocity/ground-truth feedback. A simpler sensor-only simulator is
-useful progress but does not complete goal-navigation simulation.
+First action is read-only Pi inspection and recording setup. The operator
+participates in movement and clearance checks; this plan change alone does not
+launch motors or reuse the previously stopped automatic-test script.
 
-## Scope kept small
+## Pose gate
 
-- Keep the working LDS-01 driver and SLAM Toolbox. Compare just one alternative
-  to RF2O. Use one active odometry/TF publisher.
-- Initial goals lie in discovered free space; unknown cells remain blocked.
-  No saved-map prerequisite and no automatic frontier exploration.
-- Record RGB if available; keep the camera head fixed. Camera fusion is not a
-  required new subsystem if corrected lidar odometry passes in the tested room.
-- Do not spend this session implementing custom monocular/lidar optimization,
-  object detection, grasping, ToF, tags or broad parameter sweeps.
-- Preserve map publication at three seconds unless a measured planning issue
-  requires changing it. Local obstacle handling consumes live scans directly.
-- Keep automatic reverse/recovery spins disabled. Planned turns remain allowed.
+Retain the LDS-01 driver and SLAM Toolbox. Compare corrected RF2O with
+RTAB-Map ICP; neither is a predetermined winner. A proposed first criterion
+is displacement error <=3 cm over a measured 30 cm movement, with heading
+error <=3 degrees. Report input age, drift and tracking quality separately.
+Do not fit a scale factor from the single failed trial or align trajectories
+with a free scale that hides the error. Tape measures endpoint displacement;
+use recorded observations for the motion path and turns where needed.
 
-## First decision gate: failed pose estimation
+Camera: record and synchronize RGB, keep the head fixed and check calibration.
+If corrected lidar odometry passes, custom camera fusion is deferred for this
+small navigation MVP. If both candidates fail, stop navigation integration and
+prototype calibrated range-constrained visual odometry. The literature supports
+that method conditionally, not a guaranteed fast installation.
 
-Use the same input sequences and independent reference for both candidates.
-Initial proposed targets: 30 cm endpoint translation error <=3 cm and heading
-error <=3 degrees; report stationary drift and latency separately. Include a
-plain/repetitive geometry case, not just one favourable room trajectory.
-No scale fitting may erase underestimation. Quality checks must address weak
-constraints and fresh-but-wrong outputs; timestamps alone are insufficient.
+Fresh messages and agreeing estimators are not independent proof of accuracy.
+Validate quality checks against weak-geometry and bad-registration recordings.
+If reliable tracking loss detection is unavailable, keep the operating envelope
+limited and report the unresolved deployment blocker rather than promise
+arbitrary-room navigation.
 
-If neither candidate passes, the fast hardware MVP is blocked by odometry.
-Finish an evidence report and a simulation demonstration clearly labelled
-unqualified for hardware. Next work is a calibrated camera/range-constrained
-estimator prototype, guided by the peer-reviewed audit. It is not justified
-to promise that installing RTAB-Map or adding optical flow solves the failure.
+## Motor and obstacle gates
 
-## Navigation acceptance
+The firmware's command-to-PWM scales do not establish real m/s or rad/s.
+Qualify a measured conversion and response across the tested battery/load
+conditions. Account for deadband, unequal sides, acceleration and braking.
+Use a watchdog local to the Pi so a laptop failure produces zero output.
+Teleop takeover and cancellation must work before an autonomous goal.
 
-Run short cases rather than long room tours:
+Fault injection, estimator stalls and link-loss tests first run with motor
+output blocked. Verify zero commands and final command authority. Then perform
+bounded operator-observed stopping checks; report residual travel separately
+from software response time. A proposed 250 ms software reaction target remains
+an engineering target, not a measured pass or physical stopping guarantee.
 
-1. Empty map, clear known-free goal: endpoint within 10 cm and 10 degrees of
-   independent simulator truth, with no unintended reverse after arrival.
-2. One obstacle with a reachable detour: no contact and clearance consistent
-   with the stopping envelope.
-3. Occupied/unreachable goal: reject or abort with a reason and zero output.
-4. New obstruction, cancel, stale/lost scan or pose, and command/link failure:
-   stop promptly; replan only while tracking and inputs remain valid.
-5. Inject the observed underestimation and end-reversal regressions. Distinguish
-   injected supervisor tests from identifying the cause of the real failure.
+Local obstacles come directly from live scans, independent of the three-second
+SLAM occupancy publication. Set footprint, inflation and stop clearance from
+real dimensions, sensor age and measured stopping distance. Unknown cells remain
+blocked for planning; initial goals lie in discovered free space. Preserve a
+single final command path with collision handling and watchdog gates.
+Disable automatic backup and recovery spins. Planned turns remain allowed.
 
-Keep the earlier proposed 250 ms software reaction target; independently grade
-actual wheel-stop time/residual travel in the motor model. Three core goal
-arrangements suffice for this small prototype, with failures preserved.
-These are provisional engineering targets, not literature-certified guarantees.
+## MVP acceptance
 
-## Separate robot session
+- Empty-map startup; RViz displays live scans, pose, map, route and goal status.
+- One short free-space goal ends within a proposed 10 cm and 10 degrees of an
+  independent physical reference; no unintended reversal at completion.
+- One stationary obstacle with a reachable detour is avoided without contact.
+- Occupied/unreachable goal fails cleanly; cancellation and takeover stop motion.
+- Sensor/pose/link loss produces zero output; stale map rendering alone does not
+  determine obstacle response.
+- All results include actual measurements, revision/configuration and failures.
 
-Software completion does not resume the previously stopped automatic tests.
-Before physical goals:
+REQUIRES_HARDWARE_TEST. Initial tests use a level bounded area, stowed arm and
+obstacles intersecting the lidar plane. Low objects, overhangs and drop-offs are
+outside this sensor coverage; the demonstration does not qualify all obstacles.
 
-- Run real sensor inputs with motor output blocked; check accepted pose source,
-  processing age, resource load and real-data replay evidence where available.
-- Qualify bidirectional goal/action/cancel transport and Pi-local watchdog; the
-  existing read-only viewer does not carry robot commands.
-- Coordinate independent direction, speed-response and braking measurements.
-  The current PWM scales do not establish metric speed; conversion must pass
-  under the tested battery/load conditions before Nav2 commands can drive it.
-- Then qualify one short free-space goal and one stationary obstacle detour,
-  using an independent distance reference and immediate stop/teleop takeover.
+## Scope and evidence
 
-REQUIRES_HARDWARE_TEST. This session is limited to a level bounded area,
-laser-visible obstacles, stowed arm and the measured operating envelope.
-A failed accuracy or stopping gate sends work back to its corresponding stage.
+Defer simulation, automatic exploration, object detection/pickup, tags, ToF,
+custom fusion if unnecessary, and broad parameter sweeps. Do not assume encoders.
+Reuse the [peer-reviewed audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
+and [existing physical evidence](slam-accuracy-2026-10-04.md). Literature supports
+method selection; measured real data must establish this robot's performance.
 
-## Evidence and method discipline
-
-Reuse the [peer-reviewed assumptions audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
-rather than restart a broad review. Independent studies support feasibility;
-Homer-specific performance requires measured evidence. Paper, repository and
-arXiv copy of one study count once. Uncorroborated claims remain provisional.
-
-The [full implementation plan](live-slam-rviz-goal-navigation-plan.md) supplies
-detailed isolation, estimator, control and deployment requirements. This
-schedule narrows the first implementation scope without waiving those gates.
-
-Record exact revisions, simulator assumptions, calibration provenance, input
-bags/worlds, true/estimated trajectories, commands, stop latency and failures.
-First next action: **audit evidence and prepare the minimal moving-sensor
-simulation**, with no real motor connection.
+The [full plan](live-slam-rviz-goal-navigation-plan.md) retains earlier simulator
+work as historical/deferred material. This real-world sequence governs current
+execution. Save launch commands, calibration provenance, bags, independent
+references, stop results and rollback. A failed pose or stopping gate sends work
+back to that component, not onward to longer movements.

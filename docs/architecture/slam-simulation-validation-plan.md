@@ -1,5 +1,10 @@
 # Simulation-first SLAM validation with a small reality gap
 
+Latest execution decision (2026-10-04): the user deferred simulation. Follow
+the [real-world MVP sequence](slam-rviz-navigation-fast-mvp-plan.md). Earlier
+simulation prerequisites are historical; evidence and physical qualification
+requirements still apply.
+
 User requirement recorded 2026-10-04: test in simulation before deployment.
 Applies to proposed SLAM/fusion and motion changes. The later
 [live SLAM/RViz goal plan](live-slam-rviz-goal-navigation-plan.md) brings Nav2

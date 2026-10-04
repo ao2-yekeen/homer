@@ -1,5 +1,10 @@
 # Unknown-environment object search and pickup
 
+Latest execution decision (2026-10-04): the user deferred simulation. Follow
+the [real-world MVP sequence](slam-rviz-navigation-fast-mvp-plan.md). Earlier
+simulation prerequisites are historical; evidence and physical qualification
+requirements still apply.
+
 Current priority (2026-10-04): [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md).
 The user selects destinations on the live map; object search and pickup below
 remain longer-term work. Nav2 simulation planning is now in scope.

@@ -15,6 +15,14 @@ For the time-constrained implementation sequence, use the
 [fast MVP schedule](slam-rviz-navigation-fast-mvp-plan.md). It narrows the
 initial scope while retaining the accuracy and deployment gates below.
 
+## Current execution override — 2026-10-04
+
+The user has deferred simulation and selected short real-world testing. Follow
+the [real-world MVP sequence](slam-rviz-navigation-fast-mvp-plan.md). The
+simulation stages below are historical/deferred and no longer prerequisites.
+Retain measured pose, motor-response, stopping and obstacle gates; qualify
+inputs and output handling before short operator-coordinated autonomous goals.
+
 ## Goal and first demonstration
 
 Start Homer without loading a map. SLAM builds a live map. The operator selects

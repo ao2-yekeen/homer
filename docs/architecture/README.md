@@ -7,7 +7,8 @@ flashing, use the [main README](../../README.md#build-esp32-firmware).
 Start with the [time-boxed navigation MVP plan](slam-rviz-navigation-fast-mvp-plan.md).
 
 Current priority: [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md),
-validated in simulation before hardware deployment. The
+validated through short measured real-world checks under the latest user
+instruction. Simulation is deferred. The
 [peer-reviewed assumptions audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
 records which claims are supported and which still require experiments.
 
@@ -15,8 +16,9 @@ For longer-term staged development, see the [unknown-environment object-search a
 roadmap](autonomous-mapping-object-navigation-plan.md) and the current
 [Section 1 MVP checklist](slam-section-1-validation-plan.md).
 
-Current SLAM work requires simulation and offline replay before deployment.
-Remote automatic movement tests are stopped after the 50 cm / 9 cm discrepancy.
+Current SLAM work uses real-data recording/replay and short physical
+qualification. The failed automatic distance-test script remains disabled
+after the 50 cm / 9 cm discrepancy.
 See the [camera–lidar literature review](slam-camera-fusion-literature-review-2026-10-04.md),
 [simulation-first validation plan](slam-simulation-validation-plan.md), and
 [physical test results](slam-accuracy-2026-10-04.md).
