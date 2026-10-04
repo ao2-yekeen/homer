@@ -4,25 +4,17 @@ This page shows the robot's runtime components. For installation commands and fi
 paths, use the [Pi runtime guide](../../pi/README.md); for building and
 flashing, use the [main README](../../README.md#build-esp32-firmware).
 
-Implementation agents: start with the [camera–lidar navigation handover](agent-handover-camera-lidar-rviz-navigation.md),
-then the [time-boxed navigation MVP plan](slam-rviz-navigation-fast-mvp-plan.md).
+Current requested task: detect a named object on the floor by checking two camera
+tilt views, approach it, and stop with 30 cm clearance from the robot's front.
+Implementation and physical qualification remain outstanding. Floor objects may
+sit below the lidar scan plane; a validated distance reference is required.
 
-Current priority: [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md),
-validated through short measured real-world checks under the latest user
-instruction. Simulation is deferred. The
-[peer-reviewed assumptions audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
-records which claims are supported and which still require experiments.
-
-For longer-term staged development, see the [unknown-environment object-search and pickup
-roadmap](autonomous-mapping-object-navigation-plan.md) and the current
-[Section 1 MVP checklist](slam-section-1-validation-plan.md).
-
-Current SLAM work uses real-data recording/replay and short physical
-qualification. The failed automatic distance-test script remains disabled
-after the 50 cm / 9 cm discrepancy.
-See the [camera–lidar literature review](slam-camera-fusion-literature-review-2026-10-04.md),
-[simulation-first validation plan](slam-simulation-validation-plan.md), and
-[physical test results](slam-accuracy-2026-10-04.md).
+The superseded planning and agent-handover documents have been removed.
+Keep the [physical test results](slam-accuracy-2026-10-04.md),
+[weekend LDS-01 setup](slam-lds01-weekend-2026-10-02.md),
+[camera–lidar literature review](slam-camera-fusion-literature-review-2026-10-04.md)
+and [peer-reviewed assumptions audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
+as historical evidence. The failed automatic distance-test scripts remain disabled.
 
 ## Data and control flow
 

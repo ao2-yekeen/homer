@@ -100,7 +100,7 @@ then zero, with about 5.8 s between first and last nonzero status and duty up to
 
 Remote automatic motion tests are stopped. Do not resume them using previous
 authorization. The user requested camera–lidar research and simulation before
-deployment; see [the review](slam-camera-fusion-literature-review-2026-10-04.md)
-and [simulation-first plan](slam-simulation-validation-plan.md). No firmware,
+deployment; see [the review](slam-camera-fusion-literature-review-2026-10-04.md).
+The superseded simulation-first plan has been removed. No firmware,
 TF polarity, estimator tuning or map-refresh changes were deployed as a result
 of this failure. Motor zero was reconfirmed through `/drive/status`.

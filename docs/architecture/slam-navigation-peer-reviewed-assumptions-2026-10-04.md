@@ -1,9 +1,8 @@
 # Peer-reviewed audit of the live SLAM/navigation plan
 
-Latest execution decision (2026-10-04): the user deferred simulation. Follow
-the [real-world MVP sequence](slam-rviz-navigation-fast-mvp-plan.md). Earlier
-simulation prerequisites are historical; evidence and physical qualification
-requirements still apply.
+Historical audit for the earlier SLAM/navigation task. Its superseded execution
+plans have been removed. Evidence and physical qualification requirements
+still apply; current task context is in the [architecture guide](README.md).
 
 Date: 2026-10-04. Scope: RViz-selected goals on a growing map, using Homer’s
 RGB camera and LDS-01 2D lidar. This is a targeted literature audit, not a

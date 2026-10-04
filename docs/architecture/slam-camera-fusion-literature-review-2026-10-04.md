@@ -2,7 +2,7 @@
 
 Reviewed 2026-10-04. Scoped engineering review of primary papers and author
 implementations, not a systematic review or a claim of reproduced benchmark
-results. Companion: [simulation-first validation](slam-simulation-validation-plan.md).
+results. The superseded companion simulation plan has been removed.
 
 ## Decision
 

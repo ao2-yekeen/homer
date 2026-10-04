@@ -1,8 +1,8 @@
 # Section 1 MVP implementation — 2026-10-02
 
 Status: **software deployed; physical acceptance incomplete**.
-Follow the [MVP checklist](slam-section-1-validation-plan.md). The complete
-[roadmap](autonomous-mapping-object-navigation-plan.md) remains staged.
+The superseded MVP checklist and roadmap have been removed. This document
+preserves implementation and physical-test evidence.
 
 ## Implemented
 
