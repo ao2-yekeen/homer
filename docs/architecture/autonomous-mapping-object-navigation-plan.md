@@ -1,5 +1,9 @@
 # Unknown-environment object search and pickup
 
+Current priority (2026-10-04): [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md).
+The user selects destinations on the live map; object search and pickup below
+remain longer-term work. Nav2 simulation planning is now in scope.
+
 ## Goal clarified on 2026-10-04
 
 Given a request such as “pick up the red cup”, Homer starts in an unknown
@@ -26,7 +30,7 @@ teleoperation. Remote automatic movement tests remain stopped after the
 | Section | Deliverable | Acceptance | Status |
 | --- | --- | --- | --- |
 | 1. Reliable motion estimation and online SLAM | Camera/lidar streams, validated pose, live map in RViz; small unknown-room simulation | Known simulated movements agree with estimated motion; reproduce and reject the observed underestimation failure; replay real sensor data before deployment | Existing lidar software runs; physical movement accuracy failed; camera-assisted method unvalidated |
-| 2. Safe local movement | Nearby goals on the map being built, obstacle monitoring, command watchdog and cancellation | Reach a nearby goal and stop correctly on takeover, cancellation or stale data | Not started; Nav2 work paused by user |
+| 2. Safe local movement | Nearby goals on the map being built, obstacle monitoring, command watchdog and cancellation | Reach a nearby goal and stop correctly on takeover, cancellation or stale data | Not started; now planned as the current RViz-goal MVP |
 | 3. Object detection | Requested class/colour recognition from RGB | Detect an initially visible test object reliably; handle ambiguity and missing detections | Not qualified |
 | 4. Search while mapping | Explore reachable unknown space and inspect camera views for the target | Find an initially unseen target without manual waypoints or a saved map; stop searching and transition to approach when found | Not started |
 | 5. Metric target localisation and approach | Target position with uncertainty; collision-free base pose inside arm reach | Validate localisation against measured positions; reacquire after movement; refuse uncertain or unreachable targets | Not started |

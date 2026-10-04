@@ -1,8 +1,10 @@
 # Simulation-first SLAM validation with a small reality gap
 
 User requirement recorded 2026-10-04: test in simulation before deployment.
-Applies to proposed SLAM/fusion and motion changes. Nav2 remains deferred; no
-remote automatic driving tests continue. The [camera–lidar review](slam-camera-fusion-literature-review-2026-10-04.md)
+Applies to proposed SLAM/fusion and motion changes. The later
+[live SLAM/RViz goal plan](live-slam-rviz-goal-navigation-plan.md) brings Nav2
+simulation into scope and supersedes the RGB-D assumptions below with the
+current RGB/lidar-only configuration. No remote automatic driving tests continue. The [camera–lidar review](slam-camera-fusion-literature-review-2026-10-04.md)
 sets out the candidate estimators and hardware prerequisites.
 
 ## Recommended setup

@@ -4,7 +4,10 @@ This page shows the robot's runtime components. For installation commands and fi
 paths, use the [Pi runtime guide](../../pi/README.md); for building and
 flashing, use the [main README](../../README.md#build-esp32-firmware).
 
-For staged development, see the [unknown-environment object-search and pickup
+Current priority: [live SLAM and RViz goal navigation](live-slam-rviz-goal-navigation-plan.md),
+validated in simulation before hardware deployment.
+
+For longer-term staged development, see the [unknown-environment object-search and pickup
 roadmap](autonomous-mapping-object-navigation-plan.md) and the current
 [Section 1 MVP checklist](slam-section-1-validation-plan.md).
 
