@@ -17,6 +17,39 @@ Treat the reported 50 cm actual / approximately 9 cm estimated trial as a failed
 system test. It neither identifies the root cause nor proves all lidar odometry
 is inadequate. Do not reuse that estimator as the sole movement-distance limit.
 
+## Corroboration standard added after user review
+
+Use multiple independent studies where available. Count the published paper,
+its arXiv copy, author repository and tutorial about it as one underlying study.
+A survey provides corroborating synthesis, not an independent replication of
+the cited experiment. Related authorship, reused datasets and different sensor
+hardware must be reported. Source count does not outweigh applicability.
+
+For each implementation decision, record:
+
+1. The precise claim and at least two relevant peer-reviewed sources when
+   available, including limitations or contradictory findings.
+2. Whether support is direct on comparable hardware, a general principle,
+   or an engineering inference. Do not turn partial support into full approval.
+3. Compatibility with Homer's actual sensors, geometry, timing, actuator
+   interface and processing resources.
+4. A reproducible experiment with an independent reference and evidence of
+   failures as well as successes. Agreement between two estimators is not a
+   ground-truth measurement.
+
+If direct corroboration is missing, mark the claim provisional and experimentally
+resolve it. Literature-supported feasibility and validated-on-Homer operation
+are separate statuses. No source establishes the cause of the 50 cm/9 cm trial.
+
+| Decision | Corroborating sources | Strength and remaining gap |
+| --- | --- | --- |
+| Compare lidar estimators rather than assume ICP wins | P1 RF2O experiments; P2 planar ICP; P11 independent ICP benchmark | Multiple experiments demonstrate conditional registration performance; P11 is 3D and does not rank the LDS-01 candidates |
+| Add metric constraints before using monocular displacement | P10 independent VO tutorial; P4 range-aided VO experiment | Scale ambiguity is independently supported; P4 is the direct planar-lidar fusion study reviewed, not two independent reproductions on Homer-like hardware |
+| Treat scene ambiguity and wrong correspondences as real failure modes | P9 broad SLAM survey; P11 registration experiments; P3 corridor discussion | General mechanisms corroborated; Homer's actual root cause remains unknown |
+| Separate global planning from local obstacle control | P5 Nav2 system; P6 independent local-control method | Components have independent support; P5/P8 share an author and are not independent replications of the integrated stack |
+| Measure actuation and stopping rather than rely on PWM labels | P6 physically admissible velocities; P12 actuation/low-level-control survey | Requirement corroborated; conversion and braking numbers remain robot-specific measurements |
+| Combine simulation with measured real behaviour | P7 system-identification/transfer experiment; P12 independent multi-platform survey | Transfer limits corroborated; neither establishes the real-to-sim gap of this configuration |
+
 ## Assumption register
 
 | Assumption | Verdict | Evidence | Consequence for Homer |
@@ -146,6 +179,55 @@ This software paper supports online mapping and the choice to retain SLAM
 Toolbox. It is not experimental validation of Homer’s odometry or motor control.
 Map serialization is a capability, not a prerequisite for the selected live-map
 goal task.
+
+### P9. Cadena et al., IEEE Transactions on Robotics 2016
+
+*Past, Present, and Future of Simultaneous Localization and Mapping: Toward the
+Robust-Perception Age.* 32(6), 1309–1332. DOI: 10.1109/TRO.2016.2624754.
+[Full published paper](https://robotics.caltech.edu/wiki/images/1/1a/PastPresentFutureSLAM.pdf).
+
+The survey discusses wrong data associations, perceptual aliasing, dynamic
+scenes and the dependence of maturity on robot/environment/performance
+requirements. It corroborates considering failure mechanisms and deployment
+conditions. It does not diagnose Homer or replicate P4's fusion experiment.
+
+### P10. Scaramuzza and Fraundorfer, IEEE Robotics & Automation Magazine 2011
+
+*Visual Odometry: Part I — The First 30 Years and Fundamentals.* 18(4).
+[Author's full tutorial paper](https://rpg.ifi.uzh.ch/docs/VO_Part_I_Scaramuzza.pdf),
+[publication listing](https://rpg.ifi.uzh.ch/visual_odometry_tutorial.html).
+
+The peer-reviewed tutorial explains that ordinary monocular image geometry
+recovers translation up to scale; metric information must come from additional
+measurements or validated constraints. This independently supports the scale
+requirement. It does not validate a specific RGB/2D-lidar fusion implementation.
+
+### P11. Pomerleau et al., Autonomous Robots 2013
+
+*Comparing ICP Variants on Real-World Data Sets: Open-Source Library and
+Experimental Protocol.* 34(3), 133–148. DOI: 10.1007/s10514-013-9327-2.
+[Author's full manuscript](https://www.franciscolas.net/publications/2013_Pomerleau_AutonomousRobots_Comparing.pdf),
+[author-lab publication record](https://norlab.ulaval.ca/bibliography/Pomerleau2013b/).
+
+The study evaluates sensitivity to initial pose, scan overlap and environment.
+Its registration experiments use 3D point clouds; extrapolation to a 2D
+scanner is conditional. It supports a controlled benchmark and warns against
+assuming package or algorithm identity guarantees a correct registration.
+
+### P12. Aljalbout et al., Annual Review of Control, Robotics, and Autonomous Systems 2026
+
+*The Reality Gap in Robotics: Challenges, Solutions, and Best Practices.*
+9, 403–432. DOI: 10.1146/annurev-control-031924-100130.
+[Published review](https://www.annualreviews.org/content/journals/10.1146/annurev-control-031924-100130),
+[author manuscript](https://rpg.ifi.uzh.ch/docs/AR25_Aljalbout.pdf).
+
+The publisher assigns 2026, despite the author's PDF filename containing 25.
+This review covers sensing, dynamics, actuation and system-design gaps across
+robotics. Its actuator and low-level-control discussion includes nonlinear
+response, latency and conversion between high-level setpoints and motor inputs.
+It independently corroborates measuring those gaps and testing real hardware.
+It is synthesis of multiple studies, not a new empirical result on Homer or a
+prescription that maximum visual fidelity always produces best transfer.
 
 ## Plan corrections and implementation decisions
 

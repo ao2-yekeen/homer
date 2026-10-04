@@ -6,7 +6,10 @@ pickup MVP. Pickup and autonomous frontier exploration are deferred.
 
 Peer-reviewed audit: [assumptions, supporting papers and corrections](slam-navigation-peer-reviewed-assumptions-2026-10-04.md).
 The architecture is supported; the estimator choice and physical operating
-envelope remain experimental.
+envelope remain experimental. Each implementation decision must distinguish
+independent peer-reviewed corroboration, actual hardware compatibility and
+reproducible validation. One paper and its code repository count as one study;
+claims lacking comparable independent evidence remain provisional.
 
 ## Goal and first demonstration
 
