@@ -13,6 +13,21 @@ Use short tests and retain independent measurements. The previous 50 cm actual /
 approximately 9 cm estimated failure is established; do not repeat its automatic
 distance-limited script. Map publication speed is secondary.
 
+## Camera–lidar odometry direction
+
+Latest discussion: evaluate actual RGB/2D-lidar fusion for metric odometry,
+rather than assume another lidar-only matcher solves the failure. Camera
+landmark tracking supplies visual motion constraints; calibrated associations
+between lidar ranges and visual landmarks supply metric scale constraints.
+Joint pose/scale optimization must report tracking/association quality.
+Chiodini et al. (IEEE TIM 2020), reviewed in the assumptions audit, establish
+method feasibility; usable ROS 2 code, rate and accuracy on Homer remain unverified.
+First check shared field of view, rigid mounting, camera intrinsics/extrinsics
+and timing. If useful associations are absent, this method cannot simply be
+enabled with the current mounting. Keep RF2O/ICP as comparison baselines.
+A genuine fused estimator prototype may exceed the earlier 45–90 minute budget;
+that budget covers initial feasibility work, not promised completion.
+
 ## Real-world implementation sequence
 
 Budgets are initial work allocations, not completion guarantees. Assess each
@@ -24,7 +39,7 @@ a failed result into a pass.
 | --- | --- | --- | --- |
 | 1. Inspect and prepare | 15–30 minutes | Read current Pi services/configuration; verify estimator/TF ownership, scan axes/timing and rigid sensor mounting; prepare scan/RGB/TF/status recording | Identify demonstrated configuration issues and missing calibration; motor output remains blocked |
 | 2. Obtain measured real data | 10–15 minutes with operator | Record a short operator-controlled movement of 20–30 cm and a small turn, using tape/video references and existing teleop | Raw sensor bag plus independent displacement/heading reference; no automatic distance stop based on RF2O |
-| 3. Correct/select odometry | 45–90 minutes | Fix demonstrated frame/timing errors; replay the same bag through RF2O and one ICP alternative | Select only a candidate passing accuracy and quality checks; one live odometry/TF owner |
+| 3. Correct/select odometry | 45–90 minutes | Fix demonstrated frame/timing errors; check camera/range association; evaluate a fused-estimator implementation on the same bag, with RF2O/ICP as baselines | Select only a candidate passing accuracy and quality checks; one live odometry/TF owner |
 | 4. Qualify drive and stops | 20–45 minutes with operator | Verify command polarity, actual speed response, braking, cancellation and Pi watchdog with bounded commands and independent measurements | Document a low-speed operating envelope and metric-command conversion; no reversal at completion |
 | 5. Add Nav2 and RViz goals | 45–90 minutes | Connect accepted odometry, live SLAM, footprint, lidar local costmap, collision monitor, watchdog, goal tool and cancellation; check output with motors blocked | Reproducible launch and working bidirectional goals/actions/cancel transport |
 | 6. Short navigation checks | 10–20 minutes with operator | One nearby free-space goal; one stationary obstacle detour; one occupied goal; cancellation | Independent endpoint measurement, no contact/unintended reverse, correct failure and stop behaviour |
@@ -44,10 +59,10 @@ with a free scale that hides the error. Tape measures endpoint displacement;
 use recorded observations for the motion path and turns where needed.
 
 Camera: record and synchronize RGB, keep the head fixed and check calibration.
-If corrected lidar odometry passes, custom camera fusion is deferred for this
-small navigation MVP. If both candidates fail, stop navigation integration and
-prototype calibrated range-constrained visual odometry. The literature supports
-that method conditionally, not a guaranteed fast installation.
+Evaluate calibrated range-constrained visual odometry as the desired fused
+estimate. Any lidar-only interim result must be labelled accordingly. Select
+the fused estimate only after independent accuracy and failure checks; the
+literature supports feasibility, not a guaranteed fast installation.
 
 Fresh messages and agreeing estimators are not independent proof of accuracy.
 Validate quality checks against weak-geometry and bad-registration recordings.
@@ -94,7 +109,8 @@ outside this sensor coverage; the demonstration does not qualify all obstacles.
 ## Scope and evidence
 
 Defer simulation, automatic exploration, object detection/pickup, tags, ToF,
-custom fusion if unnecessary, and broad parameter sweeps. Do not assume encoders.
+broad parameter sweeps and extra estimator alternatives. Fusion feasibility
+and an implementation assessment are now part of the odometry task. Do not assume encoders.
 Reuse the [peer-reviewed audit](slam-navigation-peer-reviewed-assumptions-2026-10-04.md)
 and [existing physical evidence](slam-accuracy-2026-10-04.md). Literature supports
 method selection; measured real data must establish this robot's performance.
