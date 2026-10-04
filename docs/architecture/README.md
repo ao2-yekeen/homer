@@ -188,6 +188,77 @@ qualification. For stationary previews, run the detector with
 parameters. Preview mode publishes observations only and cannot issue drive or
 neck commands.
 
+### Detector literature search and stationary screening — 2026-10-04
+
+The operator requested a reliable, fast alternative after the black bottle was
+misclassified. Selection considers instance masks, actual target recognition,
+ARM deployment, and the existing 500 ms acquisition-to-decision limit. Published
+GPU FPS, mean latency, and COCO AP do not establish reliability or latency on
+Homer's Pi 4. No motion commands or changes to live Pi services were made during
+this search. The installed movement model and its qualification gates remain
+unchanged.
+
+| Candidate | Primary evidence | Suitability and limits for Homer |
+| --- | --- | --- |
+| YOLO26n-seg | [Author paper, Table S9](https://arxiv.org/html/2606.03748v1): at 640, nano E2E mask AP 33.9 versus YOLO11n-seg 32.0; CPU ONNX 53.5 versus 65.9 ms. | Small segmentation candidate with a modest published improvement, not a guarantee for this bottle. CPU figures are Intel Xeon, not Pi measurements, and exclude NMS. [Pi guide](https://docs.ultralytics.com/guides/raspberry-pi) supports NCNN; its 67.03 ms result is Pi 5 **detection**, excluding preprocessing/postprocessing, not Pi 4 segmentation. |
+| YOLOE, including YOLOE-26n-seg | [YOLOE paper](https://arxiv.org/html/2503.07465v2) describes text, visual and prompt-free detection/segmentation; its speed evaluations use T4/TensorRT and iPhone/CoreML. [Current official implementation](https://docs.ultralytics.com/models/yoloe/) supports reference boxes and export with fixed prompt embeddings. | Best demonstrated alternative for **this particular bottle**: an operator-confirmed visual example avoids depending on the failed generic bottle/vase classifier. It requires an explicit reference-selection step; visual matching alone does not fulfil autonomous named-class recognition. Text prompting is a separate untested candidate. Pi export and latency remain unqualified. |
+| RF-DETR / RTMDet | [RF-DETR paper](https://arxiv.org/abs/2511.09554), [deployment documentation](https://rfdetr.roboflow.com/latest/learn/deploy/), and [RTMDet paper](https://arxiv.org/abs/2212.07784) provide real detector baselines and deployment routes. | Credible comparisons if offboard compute is considered. Their quoted GPU speeds do not establish Pi 4 suitability. Neither was tested on this bottle; do not replace the current model merely on benchmark rankings. |
+| AprilTag 3 | [IROS 2019 paper](https://april.eecs.umich.edu/papers/details.php?name=krogius2019iros) and [official implementation](https://github.com/AprilRobotics/apriltag) describe a fast C detector, encoded identities and pose estimation. | Preferred controlled demonstration alternative **if the operator accepts a printed tag** rigidly attached to the target. This identifies the tag, not an arbitrary unmarked bottle/cup. Require visible, sufficiently large tags; calibration and tag-to-nearest-object-surface geometry still matter. No tag or Pi latency test was performed. |
+
+Stationary screening used two separately captured, nearly identical downward
+frames and one upward frame excluding the target, at 320 and 640 pixels. The
+workstation environment uses Ultralytics 8.4.173, isolated from the pinned robot
+environment. Diagnostic threshold 0.05 exposes weak predictions; it is not a new
+movement threshold. YOLO11s-seg at 640 detected the actual bottle with score
+0.5298 in the first downward frame, but only 0.3413 in the separately captured
+return frame (below the existing 0.5 threshold); at 320 it labelled the target a
+vase. YOLO11m-seg and YOLO26n/s/m-seg did not identify the actual bottle at either
+input size. YOLO26n also produced a weak, incorrect bottle detection in the
+upward frame at 320 (0.2284). Increasing size/resolution alone did not produce
+consistent target recognition at the existing threshold.
+
+YOLOE-26n-seg used a manually checked reference box `[215,239,339,434]` from
+`homer-view-80.png`, then matched the bottle in **another image**,
+`homer-returned-80.png`, with scores 0.9677 at 320 and 0.9730 at 640. The predicted
+boxes cover the bottle. Both upward-view runs returned no detections even at
+0.05. These are model scores, not calibrated correctness probabilities. This is
+one positive scene and one negative scene, not a reliability study: no cup,
+other bottle, distractor, distance, lighting, occlusion or sustained tracking
+qualification was performed. A first visual-prompt call failed with a predictor
+type mismatch; explicitly selecting `YOLOEVPSegPredictor` resolved it.
+
+Reproduce these read-only checks with `pi/approach_object/tools/screen_detector.py`
+in the isolated workstation environment, supplying reviewed local checkpoints.
+It records image/checkpoint SHA256, dependencies, detections and wall times;
+the times include initialization/reference work and concurrent CPU load and
+**are not Pi latency benchmarks**. Raw screening evidence is in
+`pi/approach_object/config/detector-screening.json`; images remain in the Pi's
+existing evidence directory rather than committing room photographs.
+
+Example for the visual alternative:
+
+```bash
+python pi/approach_object/tools/screen_detector.py \
+  --model /path/to/yoloe-26n-seg.pt \
+  --reference /path/to/homer-view-80.png --box 215 239 339 434 \
+  --image /path/to/homer-returned-80.png --image /path/to/homer-view-150.png \
+  --output /tmp/visual-screening.json
+```
+
+Recommendation: evaluate YOLOE visual reference matching next for this specific
+object; if keeping autonomous `bottle`/`cup` class selection, evaluate text
+prompting and fine-tune a small segmentation model on labelled robot-camera
+bottles/cups and confusing objects. Separate training and evaluation by capture
+session/object, not adjacent video frames. Measure target precision/recall,
+wrong-instance selection, mask/depth contamination and full Pi latency before
+changing the movement model. An independent [replication study](https://arxiv.org/abs/2405.06911)
+also finds that accuracy and speed claims require comparable evaluation and can
+degrade on limited compute. Tracking cannot make an initially incorrect class
+correct. If no candidate meets both recognition and age limits, consider
+offboard inference with acquisition timestamps and the existing Pi-local lease
+supervisor; a network failure must still stop the base. AprilTag remains a
+conditional alternative, not a silent change to the unmarked-object task.
+
 All physical calibration, motor-blocked two-view qualification, measured drive
 commands, tape checks and physical approaches remain outstanding.
 **REQUIRES_HARDWARE_TEST** remains in force; no base-motion commands have been
