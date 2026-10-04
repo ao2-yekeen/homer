@@ -55,3 +55,19 @@ Motion and stability JSON copies are also in workstation
 Temporary test scripts are not installed services. The movement scripts monitor
 fresh scans/odometry/drive status, front clearance, and operator mode, send zero
 commands on exit, and leave the existing drive and teleoperation services intact.
+
+## Marked 30 cm attempt
+
+The operator placed tape straight and requested 30 cm forward so actual travel
+could be measured. The bounded command began at 0.35 and permitted at most 0.45,
+with a twelve-second ceiling and an early stop for unsafe direction, excessive
+lateral/heading change, inadequate clearance, stale inputs, or mode takeover.
+It stopped on the tracking-direction limit. Estimated endpoint was **5.45 cm
+backward and 5.88 cm left**, with heading change -4.70°. Motor outputs confirmed
+zero. The 30 cm target was not reached; actual tape travel and physical direction
+are awaiting the operator's measurement. This discrepancy needs resolution
+before another movement or any claim of accurate SLAM. Do not interpret the
+estimated backward direction as proof the hardware moved backward.
+
+Evidence: Pi `~/homer-evidence/section-1-mvp/measured30-20261004-092031.json`,
+with a workstation copy alongside the preceding JSON files.
