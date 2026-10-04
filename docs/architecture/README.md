@@ -369,6 +369,38 @@ commands, tape checks and physical approaches remain outstanding.
 **REQUIRES_HARDWARE_TEST** remains in force; no base-motion commands have been
 issued. Only the explicitly requested and announced camera-tilt checks ran.
 
+### Direct ToF diagnosis — 2026-10-04
+
+With no base, arm or camera motion, the existing ToF owner was briefly stopped
+for exclusive SDK checks and restored after each check. CSI `/dev/video0` is
+`unicam-image`, separate from the Logitech USB camera. Python SDK and native
+ToF library both report **0.1.24**, also the installed repository's current
+candidate. The camera reports HQVGA, 240×180, 12-bit, two bytes per raw sample.
+The Pi reported `throttled=0x0`. The operator confirmed that both a separate
+power cable and the CSI ribbon are connected; supply voltage/current have not
+been measured.
+
+Ten copied depth/amplitude/confidence frames were recorded after five warm-up
+frames for each of default, 2000 mm and 4000 mm range. The SDK accepted both
+range settings, but none recovered a usable scene. Median amplitude was 8 and
+its 95th percentile about 17.89; only **0.025–0.026%** of pixels exceeded 30.
+This is a diagnostic comparison, not a qualified HQVGA validity threshold.
+Changing range halved the depth values without recovering the signal. Thus the
+noise exists **before ROS transport and RGB projection** and is not confined
+to the bottle's mask. Ten raw frames were also saved; the last was a 720×240
+int16 array with 5th/median/95th percentiles −240/−16/208. No definitive cause
+(illumination, obstruction, power, sensor configuration or driver) is established.
+
+Evidence: `~/homer-evidence/approach-object/tof-sdk-check/` on the Pi contains
+`sdk-check.json`, per-range arrays, `raw-check.json` and `raw.npy`.
+`tof-depth-publisher.service` was confirmed active after restoration; RGB and
+control services were untouched. Next discriminating check is a stationary
+bright diffuse surface held within the ToF view, without moving the robot or
+changing cables. This requires no tape measurement. No distance or movement
+qualification gate has been enabled; **REQUIRES_HARDWARE_TEST** remains.
+Arducam documents the supported range controls in its
+[SDK controls reference](https://www.arducam.com/docs/tof-camera-getting-started/Example/controls.html).
+
 ## Data and control flow
 
 ```mermaid
