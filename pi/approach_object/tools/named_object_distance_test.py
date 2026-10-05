@@ -168,7 +168,7 @@ def projection_geometry(c, rgb_shape, depth_shape, nominal=None, factory_metadat
     return geometry
 
 
-def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None):
+def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None, urdf_geometry=None):
     """Return masks even when measured geometry cannot support clearance."""
     native = np.zeros(depth.shape, np.uint8)
     contact_native = np.zeros(depth.shape, np.uint8)
@@ -214,6 +214,14 @@ def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None):
             diagnostics['raw_object_range_percentiles_m'] = np.percentile(np.linalg.norm(points[in_object], axis=1), [5, 50, 95]).tolist()
         if selected.any():
             diagnostics['depth_spread_m'] = float(np.ptp(np.linalg.norm(points[selected], axis=1)))
+        if urdf_geometry is not None and selected.any():
+            model_points = transform(points[selected], urdf_geometry['tof_to_base'])
+            diagnostics['urdf_contact_probe'] = dict(
+                labels='ESTIMATED / UNQUALIFIED',
+                height_p5_p50_p95_m=np.percentile(model_points[:, 2], [5, 50, 95]).tolist(),
+                candidate_floor_samples=int((np.abs(model_points[:, 2]) <= float(c.get('floor_reject_m', .015))).sum()),
+                front_clearance_m=None,
+                reason='URDF body origins and estimated optical pitch; no metric qualification')
         if blocker or confidence_blocker or nominal is not None:
             raise ValueError(blocker or confidence_blocker or 'CALIBRATION_BLOCKER: nominal geometry cannot provide verified clearance')
         if diagnostics['mask_clipped']:
@@ -249,6 +257,7 @@ def main():
     p.add_argument('--capture', required=True, help='single capture directory or frame-NNN burst')
     p.add_argument('--calibration', required=True)
     p.add_argument('--servo-deg', type=float, help='known servo command at acquisition; omit if unknown')
+    p.add_argument('--urdf', help='robot model for unqualified contact-height diagnostics')
     p.add_argument('--nominal', action='store_true', help='explicitly enable unqualified nominal ToF projection previews')
     p.add_argument('--rgb-diagonal-deg', type=float, default=90.)
     p.add_argument('--tof-diagonal-deg', type=float, default=70.)
@@ -279,6 +288,15 @@ def main():
         p.error('checkpoint differs from screened YOLOE-26n-seg (SHA-256 mismatch)')
     c = yaml.safe_load(Path(a.calibration).read_text())
     frames = load_inputs(a.capture)
+    urdf_geometry = None
+    if a.urdf:
+        angle = estimated_view_angle(a.servo_deg)
+        if angle is None:
+            p.error('--urdf requires a known command within the estimated head mapping')
+        from approach_object.urdf_geometry import camera_geometry
+        urdf_geometry = camera_geometry(a.urdf, 90-angle)
+        urdf_geometry['source_sha256'] = hashlib.sha256(Path(a.urdf).read_bytes()).hexdigest()
+        urdf_geometry['pitch_source'] = 'existing image-derived head mapping; not shaft feedback'
     runtime_dependencies = {}
     for package, required in DEPENDENCIES.items():
         try:
@@ -342,7 +360,7 @@ def main():
                 first_rgb_mask = mask
             confidence_file = folder / 'confidence.npy'
             confidence = np.load(confidence_file, allow_pickle=False) if confidence_file.is_file() else None
-            diagnostics, native, contact_native = analyse_mask(mask, depth, confidence, c, meta, a.servo_deg, nominal)
+            diagnostics, native, contact_native = analyse_mask(mask, depth, confidence, c, meta, a.servo_deg, nominal, urdf_geometry)
             rec.update(diagnostics)
         except (ValueError, KeyError, TypeError, IndexError, cv2.error) as e:
             rec['reason'] = str(e)
@@ -389,7 +407,7 @@ def main():
                                            'sha256':hashlib.sha256(Path(a.calibration).read_bytes()).hexdigest(),
                                            'depth_semantics':c.get('depth_semantics'),
                                            'front_edge_m':c.get('front_edge_m')},
-                  nominal_geometry=nominal,
+                  nominal_geometry=nominal, urdf_geometry=urdf_geometry,
                   geometry_assumptions=[] if nominal is None else ['parallel optical axes', 'centred uncropped RGB pinhole image', 'assumed ToF ' + a.nominal_depth_semantics,
                       'nominal RGB FOV; current crop unvalidated', 'SDK ToF K when available, nominal ToF FOV otherwise', 'unknown distortion assumed zero for preview'],
                   confidence_stream_available=confidence_path.is_file(),

@@ -156,7 +156,10 @@ usable range evidence. Factory K does not qualify physical accuracy or RGB
 registration. No confidence threshold or depth semantics was invented.
 
 The operator reference is 0.38 m horizontal front-edge clearance and box height
-0.35 m. Lens height remains unknown. Pythagoras applies to the specific ray's
+0.35 m. The operator subsequently identified the v6 URDF as the geometry source.
+Its camera origin at the estimated 80° pose is 0.583355 m high and 0.138369 m
+behind the plate front edge; lens-centre/optical-axis assumptions and physical
+angle still require validation. Pythagoras applies to the specific ray's
 vertical separation, not universally to the object's full height. The numeric
 output remains null with explicit calibration blockers. All flags remain false;
 absence, second-object and two-view metric acceptance remain outstanding.

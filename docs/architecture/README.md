@@ -629,6 +629,56 @@ the full working-tree suite passed 80 tests with 2 skipped (including pre-existi
 untracked floor/range diagnostics). Python compilation and `git diff --check`
 passed. The system Python lacks OpenCV; use the runner environment.
 
+### URDF geometry follow-up — 2026-10-05
+
+The operator identified the calibrated v6 URDF as the geometry source and has no
+printer for a checkerboard. `inspect_urdf_camera_geometry.py` now reads the
+actual joint chain, moves camera origins about the neck pivot and derives the
+front datum from waffle-plate collision boxes. It does not substitute servo
+commands for optical pitch or qualify calibration flags.
+
+```bash
+python3 pi/approach_object/tools/inspect_urdf_camera_geometry.py \
+  --pitch-down-deg 36 --reference-clearance-m .38 --object-height-m .35 \
+  --output /path/to/new-geometry.json
+```
+
+At the existing estimated 36° downward pitch for command 80°, the model ToF
+origin is 0.583355 m above the floor and 0.138369 m behind the 0.15 m front
+datum. A centreline contact at the operator's 0.38 m clearance predicts a
+0.780647 m floor-point ray and 0.568824 m ray at 0.35 m height. These are
+independent reference consistency checks, not inferred measured clearance.
+The URDF camera links are body frames: lens origin and optical axis alignment
+remain explicit assumptions; the physical angle is still image-estimated.
+
+The named diagnostic and runner accept `--urdf
+simulation/urdf/home_mobile_manipulator_v6_real_base_layout.urdf`. They record
+source hash and estimated per-contact height percentiles/floor support, while
+leaving numeric clearance null when calibration is missing. This supports
+checking geometry without falsely qualifying it.
+
+A return-strength probe on the prior three factory-intrinsic captures found
+SDK confidence arrays exactly equal to amplitude arrays. They must not be
+interpreted as independent confidence probabilities. Raising the diagnostic
+amplitude threshold from 50 to 500 reduced candidate support from 836–843
+pixels to 36–41 and shifted median raw depths from 0.467–0.482 m to
+0.087–0.097 m. Simple stronger-return filtering therefore does not establish
+correct floor contact. Probe JSON remains in local evidence as
+`box-factory-intrinsics/contact-strength-probe.json`.
+
+A fresh three-frame `box-urdf-contact` run detected the box in 3/3 frames
+(scores 0.728–0.809; pairing 19.1–53.7 ms). Acquisition metadata records the
+held command 80° as caller-declared, without shaft feedback. Candidate contact
+median heights in the model frame were 0.182–0.195 m, with only 1–4 samples
+within 15 mm of the floor. These results contradict adequate floor support
+under the current nominal alignment and estimated pitch. Clearance stayed null.
+The next requested physical check is a plain matte white sheet on the existing
+box front face; do not treat it as complete until new captures verify it.
+
+The geometry follow-up tests pass in the pinned environment: 86 passed,
+2 skipped for the full working tree, including pre-existing floor/range tests.
+Python compilation and diff whitespace checks pass.
+
 ## Boot and fault observation
 
 ```mermaid

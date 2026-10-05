@@ -92,6 +92,7 @@ def main():
     parser.add_argument('--environment', type=Path)
     parser.add_argument('--calibration', type=Path, default=PACKAGE / 'config/calibration.yaml')
     parser.add_argument('--servo-deg', type=float)
+    parser.add_argument('--urdf', type=Path, help='robot model for unqualified contact geometry checks')
     parser.add_argument('--nominal', action='store_true')
     parser.add_argument('--imgsz', type=int, default=640)
     parser.add_argument('--reference-clearance-m', type=float)
@@ -122,6 +123,8 @@ def main():
                '--output', output / 'diagnostic', '--imgsz', str(args.imgsz)]
     if args.servo_deg is not None:
         command.extend(['--servo-deg', str(args.servo_deg)])
+    if args.urdf:
+        command.extend(['--urdf', str(args.urdf.resolve())])
     if args.nominal:
         command.extend(['--nominal', '--nominal-depth-semantics', args.nominal_depth_semantics])
     if args.reference_clearance_m is not None:

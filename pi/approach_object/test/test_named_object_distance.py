@@ -218,3 +218,14 @@ def test_ambiguous_identity_rejected():
     identity.select([[10, 10, 70, 70]], 100, 100)
     with pytest.raises(ValueError, match='ambiguous'):
         identity.select([[10, 10, 70, 70], [12, 12, 72, 72]], 100, 100)
+
+
+def test_urdf_probe_does_not_qualify_missing_calibration(scene):
+    scene[2]['intrinsics_measured'] = False
+    result, _, _ = analyse(scene, urdf_geometry=dict(tof_to_base=scene[2]['views'][0]['tof_to_base']))
+    assert result['clearance_m'] is None
+    assert result['reason'].startswith('CALIBRATION_BLOCKER')
+    probe = result['urdf_contact_probe']
+    assert probe['candidate_floor_samples'] >= 12
+    assert probe['front_clearance_m'] is None
+    assert probe['labels'] == 'ESTIMATED / UNQUALIFIED'
