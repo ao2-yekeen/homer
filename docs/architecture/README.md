@@ -675,6 +675,20 @@ under the current nominal alignment and estimated pitch. Clearance stayed null.
 The next requested physical check is a plain matte white sheet on the existing
 box front face; do not treat it as complete until new captures verify it.
 
+A further saved-frame RANSAC probe compared radial and optical-axis depth
+using factory K, zero assumed distortion and 36° estimated downward pitch.
+This tested consistency; the selected dominant plane was not semantically
+labelled floor. With amplitude minima 50/200 and depth range 0.05–2.0 m, the
+plane normal differed from the model floor by 44–54° and its offset by about
+0.55–0.57 m. Repeating with depth minimum 0.35 m yielded approximately 85–89°
+normal differences. Neither trial establishes a reliable floor plane or validates
+depth semantics. Model-floor support was generally higher under optical-axis
+interpretation, but this indirect evidence is insufficient for qualification.
+Each local probe report records frame hashes, geometry source hash, thresholds,
+300 RANSAC iterations, seed 42 and the 10,000-point sampling cap. Evidence:
+`box-urdf-contact/dominant-plane-probe{,-excluding-near}.json`.
+No calibration threshold or flag was changed to fit the operator reference.
+
 The geometry follow-up tests pass in the pinned environment: 86 passed,
 2 skipped for the full working tree, including pre-existing floor/range tests.
 Python compilation and diff whitespace checks pass.
