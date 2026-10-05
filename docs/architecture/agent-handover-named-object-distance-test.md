@@ -1,6 +1,6 @@
 # Agent handover: minimal named-object distance test
 
-Prepared: 4 October 2026. Status: **PLAN — NOT IMPLEMENTED; REQUIRES_HARDWARE_TEST**.
+Prepared: 4 October 2026. Status: **LIVE BOX SEGMENTATION VERIFIED; METRIC CLEARANCE UNQUALIFIED; PHYSICAL ACCEPTANCE INCOMPLETE**.
 
 ## Task and boundaries
 
@@ -28,9 +28,8 @@ implementation and measured results in the existing [architecture README](README
 - Workstation inference is the selected first implementation; capture stays on
   the Pi. Use `ssh pi` for the established connection.
 - `pi/approach_object/tools/capture_rgb_tof.py` captures the existing ROS image
-  publishers, paired within 80 ms. The working copy contains uncommitted burst
-  capture changes. Review them before reuse; do not discard or silently commit
-  unrelated work.
+  publishers, paired within 80 ms. The capture supports bursts and records optional declared servo pose
+  and factory ToF metadata. Do not discard or silently commit unrelated work.
 - `pi/approach_object/tools/yoloe_depth_preview.py` currently uses YOLOE visual
   reference matching, requires `--reference` and `--box`, and writes a
   bottle-specific mask filename. It is not the requested text-prompt interface.
@@ -91,7 +90,7 @@ python pi/approach_object/tools/named_object_distance_test.py \
   --servo-deg 100 --output /path/to/test-output
 ```
 
-This is the proposed interface, not an existing command. The tool reads saved
+This interface is implemented. The tool reads saved
 captures and never publishes ROS commands. Accept a nonempty text target; use
 YOLOE text embeddings/class setup for that name, not visual-reference prompting.
 Reuse the verified checkpoint; start with 640-pixel input and confidence 0.5.
@@ -132,6 +131,36 @@ latency; this stationary test does not qualify real-time autonomous operation.
 
 Do not generalize the autonomous start service as part of this minimal test.
 Keep `enable_motion: false`, `qualified: false` and qualification flags unchanged.
+
+## Implementation status — 5 October 2026
+
+Implemented `named_object_distance_test.py` and the persistent setup/live-capture
+runner `run_named_object_distance_test.py`. Text reaches `set_classes([target])`
+unchanged. Model, MobileCLIP encoder, dependency versions and CLIP revision are
+pinned and verified. Default input remains 640; `--imgsz 960` succeeded for the
+operator's literal `box` prompt. The runner sources the Pi's established Cyclone
+DDS environment, resolving the initial Fast DDS capture segfault.
+
+At command 80°, ten fresh paired frames detected the upright red box in 10/10
+frames (scores 0.648–0.698; timestamp separation 3.6–74.02 ms). Three-frame tests
+at 100° and 90° detected it but clipped its lower contact region. Announced
+head-only movements ended at 80° after seven-second settling waits. Base and arm
+were not commanded. Literal `red box` was also tested successfully, but this is
+not the required second distinct physical object.
+
+The existing ToF device owner now writes factory calibration metadata; controls
+are in hundredths of pixels. Captured K has fx=190.92, fy=191.25, cx=120, cy=90
+at 240×180. A subsequent fresh three-frame test detected `box` in all frames
+(scores 0.753–0.817); nominal contact-band depth spread 0.660–0.667 m was not
+usable range evidence. Factory K does not qualify physical accuracy or RGB
+registration. No confidence threshold or depth semantics was invented.
+
+The operator reference is 0.38 m horizontal front-edge clearance and box height
+0.35 m. Lens height remains unknown. Pythagoras applies to the specific ray's
+vertical separation, not universally to the object's full height. The numeric
+output remains null with explicit calibration blockers. All flags remain false;
+absence, second-object and two-view metric acceptance remain outstanding.
+See the architecture README for the runnable command and local evidence paths.
 
 ## Minimal physical test
 

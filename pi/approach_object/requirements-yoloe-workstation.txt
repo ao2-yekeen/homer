@@ -1,0 +1,11 @@
+# Isolated workstation inference environment used for the screened YOLOE model.
+# Install CPU Torch wheels from https://download.pytorch.org/whl/cpu first.
+ultralytics==8.4.173
+torch==2.8.0+cpu
+torchvision==0.23.0+cpu
+numpy==1.26.4
+opencv-python==4.11.0.86
+PyYAML==6.0.2
+clip @ git+https://github.com/ultralytics/CLIP.git@a13192f8cb767260d7dfd98c843b0716593169e7
+ftfy==6.3.1
+regex==2026.9.29

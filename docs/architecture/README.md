@@ -569,6 +569,66 @@ appears. The ToF publisher source is now tracked in `pi/tof_depth_publisher.py`.
 The RGB service can be disabled for diagnosis and is not required for LiDAR
 scans. The ToF path is optional when its separate service is installed.
 
+### Named-object distance diagnostic — 2026-10-05
+
+Implemented the stationary text-prompt diagnostic from the
+[agent handover](agent-handover-named-object-distance-test.md). The workstation
+runs the hash-checked YOLOE-26n-seg checkpoint with the literal supplied name;
+the Pi captures existing ROS publishers. Generic RGB, native ToF and candidate
+floor-contact masks, timestamps, hashes, quality reasons and processing latency
+are saved. Neither tool commands motion.
+
+```bash
+python3 pi/approach_object/tools/run_named_object_distance_test.py \
+  --target box --servo-deg 80 --imgsz 960 --nominal \
+  --frames 3 --reference-clearance-m 0.38 --output /path/to/new-output
+```
+
+The runner creates a persistent pinned CPU environment and verifies model and
+text-encoder hashes before loading them. It sources the Pi's existing ROS
+network environment: the initial capture crash was in Fast DDS node creation;
+using the established Cyclone DDS configuration restored paired capture.
+
+Live trials detected the literal prompt `box` in 10/10 fresh frames at command
+80°, with scores 0.648–0.698 and RGB/ToF separation 3.6–74.02 ms. Increasing
+input size from 640 to 960 resolved detection for this scene; it does not prove
+recognition of other objects. The upright red box was fully visible at 80°;
+its lower contact region was clipped at 90° and 100°. Announced head-only
+changes used seven-second settling waits and ended at 80°. No base or arm
+command was issued.
+
+The existing ToF publisher now records factory intrinsics without creating a
+second device owner. SDK controls are scaled by 1/100: fx=190.92, fy=191.25,
+cx=120, cy=90 for 240×180 images. These values improve diagnostic projection;
+they do not validate RGB registration, distortion or radial versus optical-axis
+depth. After deploying this metadata addition, a fresh three-frame burst
+identified the box in all frames (scores 0.753–0.817). Its nominal projected
+contact-band depth spread remained 0.660–0.667 m, so it is not reliable contact
+range evidence. Local evidence is under
+`~/.cache/homer/named-object-tests/box-factory-intrinsics` and
+`box-960-ten-frames`.
+
+The operator reports **0.38 m horizontal clearance from robot front edge** and
+**0.35 m box height**. Neither is a measured camera height or calibration.
+For a radial ray to a floor point, horizontal radius is
+`sqrt(ray_distance² - lens_height²)`; forward clearance additionally needs the
+lateral coordinate and lens-to-front offset. A ray hitting the box above the
+floor needs that hit point's height instead. The implementation uses individual
+3D rays and camera-to-base transforms rather than a whole-object median or a
+hardcoded box height.
+
+All live clearances remain **null**, with calibration blockers. Masks use
+**ESTIMATED / UNQUALIFIED** nominal RGB geometry. Missing measured registration,
+pose, front offset, depth interpretation and qualified contact support must be
+resolved before claiming accuracy. Physical absence, a second object, and
+clearance agreement within 5 cm across both views remain outstanding.
+Calibration qualification and autonomous motion flags remain false.
+
+Verification in the pinned workstation environment: 31 task tests passed;
+the full working-tree suite passed 80 tests with 2 skipped (including pre-existing
+untracked floor/range diagnostics). Python compilation and `git diff --check`
+passed. The system Python lacks OpenCV; use the runner environment.
+
 ## Boot and fault observation
 
 ```mermaid

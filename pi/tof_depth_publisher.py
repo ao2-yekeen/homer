@@ -8,7 +8,8 @@ node preserves those values on ``/tof_camera/depth/image_raw`` using the ROS
 
 from __future__ import annotations
 
-import time
+import json
+from pathlib import Path
 
 import ArducamDepthCamera as ac
 import numpy as np
@@ -16,6 +17,7 @@ import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from sensor_msgs.msg import Image
+from tof_camera_metadata import read_camera_metadata
 
 
 def depth_image(depth_mm: np.ndarray, stamp, frame_id: str) -> Image:
@@ -41,6 +43,7 @@ class TofDepthPublisher(Node):
         super().__init__("tof_depth_publisher")
         self.declare_parameter("fps", 10.0)
         self.declare_parameter("frame_id", "tof_camera")
+        self.declare_parameter("metadata_path", str(Path.home() / '.local/state/homer/tof-camera-metadata.json'))
         fps = float(self.get_parameter("fps").value)
         self.frame_id = str(self.get_parameter("frame_id").value)
         if fps <= 0:
@@ -58,6 +61,23 @@ class TofDepthPublisher(Node):
             self.camera.close()
             raise RuntimeError(f"Cannot start CSI ToF depth stream (SDK code {result})")
         self.get_logger().info("CSI ToF camera opened")
+        # Read the device already owned by this process; never open a second owner.
+        try:
+            camera_metadata = read_camera_metadata(self.camera, ac.Control)
+        except Exception as error:
+            camera_metadata = dict(factory_intrinsics_available=False, error=str(error),
+                                   physical_accuracy_verified=False, motion_authority=False)
+            self.get_logger().warning('Factory metadata unavailable: ' + str(error))
+        camera_metadata['publisher_start_stamp'] = self.get_clock().now().nanoseconds * 1e-9
+        try:
+            destination = Path(str(self.get_parameter('metadata_path').value))
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            partial = destination.with_suffix('.tmp')
+            partial.write_text(json.dumps(camera_metadata, indent=2, allow_nan=False) + '\n')
+            partial.replace(destination)
+            self.get_logger().info('Camera metadata saved: ' + str(destination))
+        except OSError as error:
+            self.get_logger().warning('Cannot save factory metadata: ' + str(error))
         self.create_timer(1.0 / fps, self.publish_frame)
 
     def publish_frame(self) -> None:
