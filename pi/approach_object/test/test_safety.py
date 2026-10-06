@@ -23,6 +23,17 @@ def test_confirmation_and_fixed_view():
     assert c.tick(1.4, True, True) == (-.12, 0)
     assert c.state == 'APPROACH' and c.view == 0
 
+@pytest.mark.parametrize('target', ['person', 'chair', 'book', 'remote', 'toothbrush', 'umbrella', 'banana', 'keyboard'])
+def test_any_detector_category_can_be_selected_for_approach(target):
+    c = Controller(CONFIG)
+    assert c.start(target, 1, True) == (True, 'search started')
+    assert c.target == target
+
+@pytest.mark.parametrize('target', ['', '  '])
+def test_empty_target_is_rejected(target):
+    c = Controller(CONFIG)
+    assert not c.start(target, 1, True)[0]
+
 def test_duplicate_observations_cannot_confirm():
     c = Controller(CONFIG)
     c.start('cup', 1, True)

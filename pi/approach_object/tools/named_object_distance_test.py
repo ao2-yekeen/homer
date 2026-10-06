@@ -19,6 +19,7 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from approach_object.geometry import Identity, transform
+from approach_object.visual_target import VisualTarget
 from approach_object.named_object_pin import (MODEL_SHA256, DEPENDENCIES, CLIP_REVISION,
     TEXT_ENCODER_SHA256, TEXT_ENCODER_URL, ensure_asset)
 
@@ -105,7 +106,18 @@ def project_native(depth_mm, calibration, rgb_shape):
     pixels = np.rint(projected.reshape(-1, 2)).astype(int)
     rh, rw = rgb_shape
     inside = (pixels[:, 0] >= 0) & (pixels[:, 0] < rw) & (pixels[:, 1] >= 0) & (pixels[:, 1] < rh)
-    return indices[inside], pixels[inside], points[inside]
+    indices, pixels, points = indices[inside], pixels[inside], points[inside]
+    if len(indices):
+        # Keep only the frontmost ToF return when multiple native pixels land
+        # on the same RGB pixel. This avoids counting a background wall behind
+        # a visible target silhouette in the projected target surface.
+        linear = pixels[:, 1].astype(np.int64) * rw + pixels[:, 0]
+        order = np.lexsort((rgb_points[inside, 2], linear))
+        ordered_pixels, ordered_indices = linear[order], order
+        first = np.r_[True, ordered_pixels[1:] != ordered_pixels[:-1]]
+        keep = ordered_indices[first]
+        indices, pixels, points = indices[keep], pixels[keep], points[keep]
+    return indices, pixels, points
 
 
 def calibration_blocker(c, meta, shape, depth_shape, servo_deg):
@@ -172,7 +184,9 @@ def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None, urdf
     """Return masks even when measured geometry cannot support clearance."""
     native = np.zeros(depth.shape, np.uint8)
     contact_native = np.zeros(depth.shape, np.uint8)
-    diagnostics = dict(clearance_m=None, contact_samples=0, projection_available=False)
+    diagnostics = dict(clearance_m=None, visible_surface_range_m=None,
+                       surface_range_reason='no reliable associated surface',
+                       contact_samples=0, projection_available=False)
     blocker = calibration_blocker(c, meta, mask.shape, depth.shape, servo_deg)
     if not mask.any():
         return diagnostics | {'reason': 'segmentation mask is empty'}, native, contact_native
@@ -211,7 +225,25 @@ def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None, urdf
             tof_intrinsics='SDK factory controls' if nominal and factory and factory.get('factory_intrinsics_available') else ('nominal FOV' if nominal else 'calibration file'),
             depth_semantics=geometry['depth_semantics'], qualified=blocker is None and nominal is None)
         if in_object.any():
-            diagnostics['raw_object_range_percentiles_m'] = np.percentile(np.linalg.norm(points[in_object], axis=1), [5, 50, 95]).tolist()
+            ranges = np.linalg.norm(points[in_object], axis=1)
+            percentiles = np.percentile(ranges, [5, 50, 95])
+            diagnostics['raw_object_range_percentiles_m'] = percentiles.tolist()
+            diagnostics['tof_boundary_clipped'] = bool(native[0].any() or native[-1].any()
+                                                       or native[:, 0].any() or native[:, -1].any())
+            surface_blocker = next((f'{flag} is not qualified' for flag in
+                ('intrinsics_measured', 'alignment_measured', 'depth_validated')
+                if c.get(flag) is not True), None)
+            if nominal is not None:
+                surface_blocker = 'nominal projection is unqualified'
+            if confidence_blocker:
+                surface_blocker = confidence_blocker
+            if in_object.sum() < max(12, int(c.get('min_samples', 12))):
+                surface_blocker = 'insufficient visible surface samples'
+            if percentiles[2] - percentiles[0] > float(c.get('max_object_depth_span_m', .15)):
+                surface_blocker = 'visible surface spread too large; possible mixed returns'
+            diagnostics['surface_range_reason'] = surface_blocker or 'range to observed surface; unseen extent unknown'
+            if surface_blocker is None:
+                diagnostics['visible_surface_range_m'] = float(percentiles[1])
         if selected.any():
             diagnostics['depth_spread_m'] = float(np.ptp(np.linalg.norm(points[selected], axis=1)))
         if urdf_geometry is not None and selected.any():
@@ -252,7 +284,10 @@ def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None, urdf
 
 def main():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument('--target', required=True, help='free-form text class prompt')
+    p.add_argument('--target', help='free-form text prompt, or display label with --reference')
+    p.add_argument('--reference', type=Path, help='visual example image; avoids class-name recognition')
+    p.add_argument('--box', nargs=4, type=float, help='reference-image box x0 y0 x1 y1')
+    p.add_argument('--selection-box', nargs=4, type=float, help='optional first-capture box to select among reference matches')
     p.add_argument('--model', required=True, help='screened YOLOE-26n-seg checkpoint')
     p.add_argument('--capture', required=True, help='single capture directory or frame-NNN burst')
     p.add_argument('--calibration', required=True)
@@ -267,9 +302,19 @@ def main():
     p.add_argument('--reference-clearance-m', type=float, help='independent operator measurement for this captured scene')
     p.add_argument('--output', required=True)
     a = p.parse_args()
-    target = a.target.strip()
+    target = a.target.strip() if a.target is not None else ('selected object' if a.reference else '')
     if not target:
-        p.error('--target must be nonempty')
+        p.error('provide a nonempty --target or a visual --reference with --box')
+    reference = None
+    if a.reference is not None:
+        reference = cv2.imread(str(a.reference))
+        if reference is None or a.box is None or not np.isfinite(a.box).all():
+            p.error('visual prompting requires a readable --reference and finite --box')
+        x0, y0, x1, y1 = a.box
+        if not (0 <= x0 < x1 <= reference.shape[1] and 0 <= y0 < y1 <= reference.shape[0]):
+            p.error('--box must lie inside reference image')
+    elif a.box is not None or a.selection_box is not None:
+        p.error('--box and --selection-box require --reference')
     if a.servo_deg is not None and not np.isfinite(a.servo_deg):
         p.error('--servo-deg must be finite')
     if not 320 <= a.imgsz <= 1280 or a.imgsz % 32:
@@ -322,11 +367,14 @@ def main():
     original_cwd = Path.cwd()
     try:
         os.chdir(encoder.parent)
-        model.set_classes([target])
+        if reference is None:
+            model.set_classes([target])
     finally:
         os.chdir(original_cwd)
     setup_latency = time.perf_counter() - started
     identity = Identity()
+    visual_identity = VisualTarget() if reference is not None else None
+    visual_prompt_ready = False
     records, native_masks, contact_masks = [], [], []
     first_rgb_mask = None
     for index, (folder, meta, rgb, depth) in enumerate(frames):
@@ -338,24 +386,41 @@ def main():
                    capture_pose_source=meta.get('pose_source', 'not recorded'),
                    rgb_sha256=hashlib.sha256((folder/'rgb.png').read_bytes()).hexdigest(),
                    depth_sha256=hashlib.sha256((folder/'depth-mm.npy').read_bytes()).hexdigest(),
-                   detected=False, clearance_m=None, reason='')
+                   detected=False, clearance_m=None, visible_surface_range_m=None,
+                   visibility='lost', reason='')
         inference_started = time.perf_counter()
         mask = np.zeros(rgb.shape[:2], bool)
         native = np.zeros(depth.shape, np.uint8)
         contact_native = np.zeros(depth.shape, np.uint8)
         try:
-            result = model.predict(rgb, imgsz=a.imgsz, conf=.5, verbose=False, device='cpu')[0]
+            predict_options = {}
+            if visual_identity is not None and not visual_prompt_ready:
+                from ultralytics.models.yolo.yoloe.predict import YOLOEVPSegPredictor
+                predict_options = dict(predictor=YOLOEVPSegPredictor, refer_image=reference,
+                    visual_prompts=dict(bboxes=np.array([a.box]), cls=np.array([0])))
+            result = model.predict(rgb, imgsz=a.imgsz, conf=.5, verbose=False, device='cpu', **predict_options)[0]
+            if visual_identity is not None:
+                visual_prompt_ready = True  # reference embedding persists in YOLOE
             boxes = result.boxes.xyxy.cpu().numpy() if result.boxes is not None else np.empty((0, 4))
             scores = result.boxes.conf.cpu().numpy() if result.boxes is not None else np.empty(0)
-            chosen = identity.select([b.tolist() for b in boxes], rgb.shape[1], rgb.shape[0])
+            if visual_identity is not None:
+                candidates = [] if result.masks is None else [
+                    unletterbox_mask(m.cpu().numpy(), rgb.shape[:2]) for m in result.masks.data]
+                chosen, tracking = visual_identity.select(rgb, candidates, meta['rgb_stamp'],
+                    a.selection_box if index == 0 else None)
+                rec.update(tracking)
+            else:
+                chosen = identity.select([b.tolist() for b in boxes], rgb.shape[1], rgb.shape[0])
             if chosen is None:
                 raise ValueError('target absent; no distance retained')
             if result.masks is None:
                 raise ValueError('segmentation mask absent')
             mask = unletterbox_mask(result.masks.data[chosen].cpu().numpy(), rgb.shape[:2])
-            rec.update(detected=True, selected_identity=identity.identity,
+            rec.update(detected=True, selected_identity=visual_identity.identity if visual_identity is not None else identity.identity,
                        score=float(scores[chosen]), bbox_xyxy=boxes[chosen].tolist(),
                        mask_pixels=int(mask.sum()))
+            if visual_identity is None:
+                rec['visibility'] = 'visible_extent_unknown'
             if index == 0:
                 first_rgb_mask = mask
             confidence_file = folder / 'confidence.npy'
@@ -364,6 +429,8 @@ def main():
             rec.update(diagnostics)
         except (ValueError, KeyError, TypeError, IndexError, cv2.error) as e:
             rec['reason'] = str(e)
+            if not rec['detected']:
+                rec['visibility'] = 'ambiguous' if 'ambiguous' in str(e) else 'lost'
         native_masks.append(native)
         contact_masks.append(contact_native)
         rec['processing_latency_s'] = time.perf_counter() - inference_started
@@ -385,9 +452,12 @@ def main():
     error = abs(aggregate_clearance - a.reference_clearance_m) if aggregate_clearance is not None and a.reference_clearance_m is not None else None
     blocker = next((r['reason'] for r in records if r.get('clearance_m') is None), None)
     confidence_path = folder/'confidence.npy'
-    report = dict(mode='OFFLINE_NAMED_OBJECT_FLOOR_CONTACT_DIAGNOSTIC', target=target,
+    report = dict(mode='OFFLINE_VISUAL_TARGET_DIAGNOSTIC' if reference is not None else 'OFFLINE_NAMED_OBJECT_FLOOR_CONTACT_DIAGNOSTIC', target=target,
+                  prompt_mode='visual' if reference is not None else 'text',
+                  reference_sha256=hashlib.sha256(a.reference.read_bytes()).hexdigest() if reference is not None else None,
+                  reference_box=a.box, selection_box=a.selection_box,
                   tool_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-                  prompt=target, imgsz=a.imgsz, confidence_threshold=.5,
+                  prompt=target if reference is None else None, imgsz=a.imgsz, confidence_threshold=.5,
                   checkpoint=str(model_path), checkpoint_sha256=digest,
                   text_encoder_sha256=hashlib.sha256(encoder.read_bytes()).hexdigest(),
                   clip_source_revision=clip_revision,

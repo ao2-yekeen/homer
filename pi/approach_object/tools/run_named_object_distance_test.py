@@ -82,7 +82,10 @@ def capture_pi(host, destination, frames, servo_deg=None):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--target', required=True)
+    parser.add_argument('--target', help='text target, or optional display label for visual prompting')
+    parser.add_argument('--reference', type=Path, help='visual example image')
+    parser.add_argument('--box', nargs=4, type=float, help='reference-image box x0 y0 x1 y1')
+    parser.add_argument('--selection-box', nargs=4, type=float, help='first-capture box to disambiguate target instance')
     parser.add_argument('--pi', default='pi')
     parser.add_argument('--frames', type=int, default=3)
     parser.add_argument('--capture', type=Path, help='reuse saved capture instead of taking fresh frames')
@@ -97,8 +100,15 @@ def main():
     parser.add_argument('--reference-clearance-m', type=float)
     parser.add_argument('--nominal-depth-semantics', choices=('radial', 'optical_z'), default='radial')
     args = parser.parse_args()
-    if not args.target.strip() or not 1 <= args.frames <= 100 or not 320 <= args.imgsz <= 1280 or args.imgsz % 32:
+    if (args.target is not None and not args.target.strip()) or not (args.target or args.reference) or not 1 <= args.frames <= 100 or not 320 <= args.imgsz <= 1280 or args.imgsz % 32:
         parser.error('nonempty target, 1–100 frames and image size 320–1280 in multiples of 32 required')
+    if args.reference is not None:
+        if not args.reference.is_file() or args.box is None or not all(math.isfinite(v) for v in args.box):
+            parser.error('--reference must exist and requires a finite --box')
+        if args.box[0] < 0 or args.box[1] < 0 or args.box[0] >= args.box[2] or args.box[1] >= args.box[3]:
+            parser.error('invalid reference box')
+    elif args.box is not None or args.selection_box is not None:
+        parser.error('--box and --selection-box require --reference')
     if args.pi.startswith('-') or any(character.isspace() for character in args.pi):
         parser.error('invalid SSH host alias')
     if args.reference_clearance_m is not None and (not math.isfinite(args.reference_clearance_m) or args.reference_clearance_m < 0):
@@ -117,9 +127,15 @@ def main():
     output.mkdir(parents=True)
     capture = args.capture.resolve() if args.capture else output / 'capture'
     remote = None if args.capture else capture_pi(args.pi, capture, args.frames, args.servo_deg)
-    command = [python, PACKAGE / 'tools/named_object_distance_test.py', '--target', args.target,
+    command = [python, PACKAGE / 'tools/named_object_distance_test.py',
                '--model', model, '--capture', capture, '--calibration', args.calibration.resolve(),
                '--output', output / 'diagnostic', '--imgsz', str(args.imgsz)]
+    if args.target:
+        command.extend(['--target', args.target])
+    if args.reference:
+        command.extend(['--reference', args.reference.resolve(), '--box', *map(str, args.box)])
+    if args.selection_box is not None:
+        command.extend(['--selection-box', *map(str, args.selection_box)])
     if args.servo_deg is not None:
         command.extend(['--servo-deg', str(args.servo_deg)])
     if args.urdf:

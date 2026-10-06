@@ -294,7 +294,7 @@ therefore has a **RECOGNITION_BLOCKER for this black bottle**; do not relabel a
 vase as a bottle or enable approach. Images/logs are
 `~/homer-evidence/approach-object/view-80.*` and `view-150.*`. This is not a two-view or motion
 qualification. For stationary previews, run the detector with
-`--ros-args -p recognition_target:=bottle` (or `cup`), plus the calibration/model
+`--ros-args -p recognition_target:=CLASS`, plus the calibration/model
 parameters. Preview mode publishes observations only and cannot issue drive or
 neck commands.
 

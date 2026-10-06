@@ -32,6 +32,8 @@ def main():
     parser.add_argument('--auxiliary', action='store_true', help='Require ToF amplitude and confidence from the same frame')
     parser.add_argument('--frames', type=int, default=1, help='Save distinct matched pairs; multiple pairs go in frame-NNN directories')
     parser.add_argument('--servo-deg', type=float, help='known head command held during capture; records it without commanding motion')
+    parser.add_argument('--usb-camera', default='/dev/v4l/by-id/usb-Generic_USB_Camera_200901010001-video-index0',
+                        help='extra USB camera device to capture directly')
     args = parser.parse_args()
     if not 1 <= args.frames <= 100:
         parser.error('--frames must be between 1 and 100')
@@ -76,6 +78,23 @@ def main():
             destination.mkdir(parents=True, exist_ok=True)
             if not cv2.imwrite(str(destination / 'rgb.png'), image_array(r, 'bgr8', 'uint8', 3)):
                 raise RuntimeError('failed to save RGB')
+            usb = cv2.VideoCapture(args.usb_camera, cv2.CAP_V4L2)
+            try:
+                if not usb.isOpened():
+                    raise RuntimeError(f'cannot open extra USB camera: {args.usb_camera}')
+                # This UVC camera stalls in its default uncompressed mode on
+                # the Pi while the Logitech and ToF streams are active.
+                usb.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+                ok, usb_frame = usb.read()
+                if not ok or usb_frame is None:
+                    raise RuntimeError(f'cannot read frame from extra USB camera: {args.usb_camera}')
+                if not cv2.imwrite(str(destination / 'usb-camera.png'), usb_frame):
+                    raise RuntimeError('failed to save extra USB camera frame')
+                metadata_usb_camera = dict(device=args.usb_camera, model='Realtek Generic USB Camera',
+                                           capture_unix_s=time.time(), width=int(usb_frame.shape[1]),
+                                           height=int(usb_frame.shape[0]))
+            finally:
+                usb.release()
             np.save(destination / 'depth-mm.npy', image_array(d, '32FC1', 'float32'))
             if args.auxiliary:
                 for name, stream in [('amplitude', amplitude), ('confidence', confidence)]:
@@ -93,6 +112,7 @@ def main():
                             motion_commanded=False)
             metadata['servo_command_deg'] = args.servo_deg
             metadata['pose_source'] = 'caller declared held command; no shaft feedback'
+            metadata['extra_usb_camera'] = metadata_usb_camera
             factory_file = Path.home() / '.local/state/homer/tof-camera-metadata.json'
             if factory_file.is_file():
                 try:

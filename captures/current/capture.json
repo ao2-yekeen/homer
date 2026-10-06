@@ -1,0 +1,55 @@
+{
+  "rgb_stamp": 1791314452.2438283,
+  "depth_stamp": 1791314452.2859108,
+  "delta_s": 0.04208254814147949,
+  "receipt_stamp": 1791314452.3015368,
+  "rgb_frame": "rgb_camera",
+  "tof_frame": "tof_camera",
+  "depth_units": "publisher millimetres; physical interpretation requires validation",
+  "motion_commanded": false,
+  "servo_command_deg": null,
+  "pose_source": "caller declared held command; no shaft feedback",
+  "extra_usb_camera": {
+    "device": "/dev/v4l/by-id/usb-Generic_USB_Camera_200901010001-video-index0",
+    "model": "Realtek Generic USB Camera",
+    "capture_unix_s": 1791314452.804818,
+    "width": 640,
+    "height": 480
+  },
+  "tof_camera_metadata": {
+    "source": "Arducam SDK INTRINSIC_* controls / 100",
+    "sdk_intrinsics_raw": {
+      "fx": 19092,
+      "fy": 19125,
+      "cx": 12000,
+      "cy": 9000
+    },
+    "width": 240,
+    "height": 180,
+    "K": [
+      [
+        190.92,
+        0.0,
+        120.0
+      ],
+      [
+        0.0,
+        191.25,
+        90.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "distortion": null,
+    "factory_intrinsics_available": true,
+    "physical_accuracy_verified": false,
+    "depth_units": "millimetres",
+    "depth_semantics": "unvalidated",
+    "range_control_mm": 4000,
+    "motion_authority": false,
+    "publisher_start_stamp": 1791291286.379294
+  }
+}

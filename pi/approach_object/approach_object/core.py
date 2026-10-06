@@ -35,14 +35,14 @@ class Controller:
     def start(self, target, now, authorized):
         if self.state in ACTIVE:
             return False, 'task already active'
-        if target not in ('bottle', 'cup'):
-            return False, 'supported targets: bottle, cup'
+        if not isinstance(target, str) or not target.strip():
+            return False, 'target must be a nonempty detector class name'
         if not authorized:
             return False, 'operator autonomous mode, link and no override required'
         if not self.config['qualified']:
             return False, self.config.get('movement_blocker', 'REQUIRES_HARDWARE_TEST: calibration/drive qualification incomplete')
         self.__init__(self.config)
-        self.target, self.state = target, 'SEARCH'
+        self.target, self.state = target.strip(), 'SEARCH'
         self.view_started = self.last_seen = now
         return True, 'search started'
 

@@ -99,6 +99,23 @@ def test_native_indices_survive_invalid_depth_and_projection(scene):
     assert radial[0, 2] < points[0, 2]
 
 
+def test_projection_keeps_frontmost_return_per_rgb_pixel(scene):
+    _, depth, calibration, _ = scene
+    depth[:] = 0
+    depth[50, 50] = 500
+    depth[50, 51] = 1000
+    calibration['tof_K'] = [[100000., 0., 50.], [0., 100000., 50.], [0., 0., 1.]]
+    calibration['tof_to_rgb'] = np.eye(4).tolist()
+    calibration['rgb_K'] = [[100000., 0., 50.], [0., 100000., 50.], [0., 0., 1.]]
+    calibration['rgb_D'] = [0.] * 5
+    calibration['tof_D'] = [0.] * 5
+    indices, pixels, points = diagnostic.project_native(depth, calibration, depth.shape)
+    collisions = np.flatnonzero(np.all(pixels == [50, 50], axis=1))
+    assert len(collisions) == 1
+    assert indices[collisions[0]] == 50 * 100 + 50
+    assert points[collisions[0], 2] == pytest.approx(.5)
+
+
 @pytest.mark.parametrize('problem,reason', [
     ('clipped', 'clipped'), ('invalid_depth', 'insufficient'),
     ('mixed_depth', 'spread'), ('unknown_pose', 'POSE_BLOCKER'),
@@ -135,6 +152,37 @@ def test_unqualified_and_nominal_preserve_useful_masks(scene):
     result, native, _ = analyse(scene, nominal=dict(rgb_diagonal_deg=90., tof_diagonal_deg=70., baseline_x_m=.04))
     assert result['projection_available'] and native.any()
     assert result['clearance_m'] is None
+
+
+def test_partial_rgb_mask_has_surface_range_without_floor_clearance(scene):
+    scene[0][:] = False
+    scene[0][0:45, 35:65] = True
+    result, native, _ = analyse(scene)
+    assert result['mask_clipped'] is True and native.any()
+    assert result['visible_surface_range_m'] is not None
+    assert result['clearance_m'] is None
+
+
+def test_partial_tof_overlap_keeps_only_observed_surface(scene):
+    scene[0][:] = False
+    scene[0][20:80, 60:99] = True
+    scene[2]['tof_to_rgb'][0][3] = -.3
+    result, native, _ = analyse(scene)
+    assert result['tof_boundary_clipped'] is True
+    assert result['visible_surface_range_m'] is not None
+    assert native.any() and np.count_nonzero(native) < np.count_nonzero(scene[0])
+
+
+def test_nominal_or_mixed_partial_surface_does_not_claim_range(scene):
+    scene[2]['alignment_measured'] = False
+    result, _, _ = analyse(scene)
+    assert result['visible_surface_range_m'] is None
+    assert 'alignment_measured' in result['surface_range_reason']
+    scene[2]['alignment_measured'] = True
+    scene[1][10:50] = 2000.
+    result, _, _ = analyse(scene)
+    assert result['visible_surface_range_m'] is None
+    assert 'spread' in result['surface_range_reason']
 
 
 def test_factory_intrinsics_override_fov_only_for_unqualified_preview(scene):

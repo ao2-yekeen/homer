@@ -28,8 +28,8 @@ class Detector(Node):
         self.rgb = self.depth = None
         self.lock = threading.Lock()
         preview = self.declare_parameter('recognition_target', '').value
-        if preview not in ('', 'bottle', 'cup'):
-            raise ValueError('recognition_target must be bottle or cup')
+        if not isinstance(preview, str):
+            raise ValueError('recognition_target must be a detector class name')
         self.preview = bool(preview)
         self.request = {'active': self.preview, 'session': 0, 'target': preview, 'view': 0, 'settled_after': 0}
         self.identity = Identity()
