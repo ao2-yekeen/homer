@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -e
+
+if [[ $# != 1 || ! "$1" =~ ^[0-9]+$ ]]; then
+  echo "Usage: servo ANGLE (80–150)" >&2
+  exit 2
+fi
+if (( 10#$1 < 80 || 10#$1 > 150 )); then
+  echo "Angle must be 80–150" >&2
+  exit 2
+fi
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source /opt/ros/jazzy/setup.bash
+exec python3 "$script_dir/camera_tilt.py" --angle "$1"

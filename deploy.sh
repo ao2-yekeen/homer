@@ -62,6 +62,7 @@ scp -q "$BOOT_APP0" \
   "pi:$REMOTE_DIR/boot_app0.bin"
 if [ "$ENVIRONMENT" = "esp32dev" ]; then
   scp -q "$PROJECT_DIR/pi/esp32_serial_bridge.py" \
+    "$PROJECT_DIR/pi/ros_runtime.py" \
     "$PROJECT_DIR/pi/serial_protocol.py" \
     "$PROJECT_DIR/pi/esp32_port.py" \
     "$PROJECT_DIR/pi/device_paths.py" "pi:$REMOTE_PI_DIR/"

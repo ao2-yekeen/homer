@@ -20,3 +20,5 @@ jobs:
           python-version: '3.12'
       - name: Run hardware-independent tests
         run: PYTHONPATH=pi/robot_teleop/src python3 -m unittest discover -s pi/robot_teleop/tests -v
+      - name: Check ROS environment and capture deployment regressions
+        run: python3 -m unittest discover -s pi/tests -p test_ros_runtime.py -v

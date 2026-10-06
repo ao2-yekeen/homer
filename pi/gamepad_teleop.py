@@ -2,6 +2,9 @@
 """Safe all-robot gamepad teleoperation."""
 import math
 
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
@@ -45,7 +48,7 @@ class GamepadTeleop(Node):
         self.previous_buttons = []
         self.arm_residual = [0.0] * 6
         self.arm_command_active = False
-        self.neck_angle = 90.0
+        self.neck_angle = float(self.neck_min_angle)
         self.autonomous = True
         self.b_hold_started_ns = None
         self.last_tick_ns = self.get_clock().now().nanoseconds

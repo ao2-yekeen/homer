@@ -47,7 +47,7 @@ constexpr int kNeckMinimumPulseUs = 500;
 constexpr int kNeckMaximumPulseUs = 2500;
 constexpr int kNeckMinimumAngle = 80;
 constexpr int kNeckMaximumAngle = 150;
-constexpr int kNeckSafeCenterAngle = 120;
+constexpr int kNeckDefaultAngle = kNeckMinimumAngle;
 constexpr uint32_t kNeckStepIntervalMs = 50;
 
 }  // namespace homer::config

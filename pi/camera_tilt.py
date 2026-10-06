@@ -8,6 +8,9 @@ the conservative 80--150 degree range and keep the emergency stop available.
 from __future__ import annotations
 
 import argparse
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 
 import rclpy
 from rclpy.node import Node
@@ -32,8 +35,15 @@ def main() -> None:
     node = Node("camera_tilt_command")
     publisher = node.create_publisher(Int32, "/teleop/neck_angle", 1)
     # Let ROS discovery complete before publishing exactly one intentional move.
-    for _ in range(10):
+    for _ in range(30):
         rclpy.spin_once(node, timeout_sec=0.1)
+        if publisher.get_subscription_count() > 0:
+            break
+    if publisher.get_subscription_count() == 0:
+        node.get_logger().error("No neck controller subscribed; no tilt command sent")
+        node.destroy_node()
+        rclpy.shutdown()
+        raise SystemExit(2)
     publisher.publish(Int32(data=args.angle))
     node.get_logger().info(f"Commanded camera tilt angle {args.angle} degrees")
     rclpy.spin_once(node, timeout_sec=0.2)
