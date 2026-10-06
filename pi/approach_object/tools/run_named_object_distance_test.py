@@ -57,19 +57,18 @@ def capture_pi(host, destination, frames, servo_deg=None):
         for name in ('model_io.py', 'model_pin.py'):
             shutil.copy2(PACKAGE / 'approach_object' / name, source / name)
         shutil.copy2(PACKAGE / 'tools/capture_rgb_tof.py', root / 'capture_rgb_tof.py')
+        shutil.copy2(PACKAGE.parent / 'ros_runtime.py', root / 'ros_runtime.py')
         archive = root / 'code.tar'
         with tarfile.open(archive, 'w') as bundle:
             bundle.add(source, arcname='approach_object')
             bundle.add(root / 'capture_rgb_tof.py', arcname='capture_rgb_tof.py')
+            bundle.add(root / 'ros_runtime.py', arcname='ros_runtime.py')
         with archive.open('rb') as upload:
             run(['ssh', '-o', 'BatchMode=yes', '-o', 'ConnectTimeout=10', host,
                  'mkdir -p ' + shlex.quote(remote) + ' && tar -xf - -C ' + shlex.quote(remote)], stdin=upload)
     # Reuse the network environment used by the working camera services.
     command = '\n'.join([
         'set -e', 'source /opt/ros/jazzy/setup.bash',
-        'if [ -f "$HOME/.config/homer-slam/network/ros.env" ]; then',
-        '  set -a; source "$HOME/.config/homer-slam/network/ros.env"; set +a',
-        'else', '  export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp', 'fi',
         'export PYTHONPATH=' + shlex.quote(remote) + ':"$PYTHONPATH"',
         'exec /usr/bin/python3 ' + shlex.quote(remote + '/capture_rgb_tof.py')
         + ' --auxiliary --frames ' + str(frames) + ' --output ' + shlex.quote(remote + '/capture')

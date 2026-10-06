@@ -121,6 +121,9 @@ def write_event(directory: Path, event: str, value: float | None) -> Path:
 
 
 def main() -> None:
+    from ros_runtime import ensure_ros_environment
+
+    ensure_ros_environment()
     import rclpy
     from rclpy.node import Node
     from rclpy.qos import qos_profile_sensor_data

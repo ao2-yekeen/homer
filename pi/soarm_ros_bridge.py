@@ -15,6 +15,9 @@ import sys
 import threading
 import time
 
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Int16MultiArray, String

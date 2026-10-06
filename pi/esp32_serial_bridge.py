@@ -8,6 +8,9 @@ import os
 import time
 from pathlib import Path
 
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 import serial
 from geometry_msgs.msg import Twist, TwistStamped

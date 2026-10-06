@@ -19,6 +19,9 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node

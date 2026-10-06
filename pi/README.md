@@ -140,6 +140,23 @@ source /opt/ros/jazzy/setup.bash
 python3 pi/camera_tilt.py --angle 100
 ```
 
+Standalone Pi ROS scripts use `ros_runtime.py` to load and validate
+`~/.config/homer-slam/network/ros.env`, matching the services' middleware and
+network settings. Conflicting environment overrides and invalid DDS files stop
+the command before ROS starts. Deploy `ros_runtime.py` alongside these scripts.
+The tilt helper also waits for a controller subscription before publishing.
+
+For ROS CLI commands on the Pi, use the same loader after sourcing ROS:
+
+```bash
+python3 ~/mobile-robot/pi/ros_runtime.py ros2 topic list
+```
+
+Sourcing the ROS distribution alone selected Fast DDS, which crashed in native
+message type registration on this Pi. Changing only the middleware also missed
+the services' configured interface and discovery peers. Regression checks in
+`pi/tests/test_ros_runtime.py` cover both errors and run in CI.
+
 `REQUIRES_HARDWARE_TEST`: record the tested tilt angle, platform visibility,
 and any camera/arm/cable clearance limit before treating a named view as safe.
 The ESP32 also stops the base if its active command stream is stale for one

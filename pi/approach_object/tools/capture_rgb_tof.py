@@ -5,10 +5,17 @@ from collections import deque
 import json
 import math
 from pathlib import Path
+import sys
 import time
 
 import cv2
 import numpy as np
+# The uploaded capture bundle includes ros_runtime beside this script. For a
+# checkout, find the same shared module in pi/.
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image

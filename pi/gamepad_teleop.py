@@ -2,6 +2,9 @@
 """Safe all-robot gamepad teleoperation."""
 import math
 
+from ros_runtime import ensure_ros_environment
+
+ensure_ros_environment()
 import rclpy
 from geometry_msgs.msg import Twist
 from rclpy.node import Node
