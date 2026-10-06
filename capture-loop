@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+capture_python="$HOME/.cache/homer/yoloe-venv/bin/python"
+if [[ ! -x "$capture_python" ]]; then
+  capture_python=python3
+fi
+exec "$capture_python" "$repo_dir/pi/approach_object/tools/capture_continuous.py" "$@"

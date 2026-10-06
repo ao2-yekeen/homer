@@ -10,6 +10,7 @@ DEPENDENCIES = {
     'torch': '2.8.0+cpu',
     'torchvision': '0.23.0+cpu',
     'numpy': '1.26.4',
+    'scipy': '1.15.3',
     'opencv-python': '4.11.0.86',
     'PyYAML': '6.0.2',
     'clip': '1.0',

@@ -55,7 +55,15 @@ def main():
     deadline = time.monotonic() + 20 + args.frames
     captures = []
     last_rgb = last_depth = float('-inf')
+    usb = None
     try:
+        # Keep the auxiliary camera open across the burst. Reopening it for
+        # every pair adds startup delays that can expire target tracking.
+        usb = cv2.VideoCapture(args.usb_camera, cv2.CAP_V4L2)
+        if not usb.isOpened():
+            raise RuntimeError(f'cannot open extra USB camera: {args.usb_camera}')
+        # This UVC camera stalls in its default uncompressed mode on the Pi.
+        usb.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
         while len(captures) < args.frames:
             pair = None
             while time.monotonic() < deadline and pair is None:
@@ -78,23 +86,14 @@ def main():
             destination.mkdir(parents=True, exist_ok=True)
             if not cv2.imwrite(str(destination / 'rgb.png'), image_array(r, 'bgr8', 'uint8', 3)):
                 raise RuntimeError('failed to save RGB')
-            usb = cv2.VideoCapture(args.usb_camera, cv2.CAP_V4L2)
-            try:
-                if not usb.isOpened():
-                    raise RuntimeError(f'cannot open extra USB camera: {args.usb_camera}')
-                # This UVC camera stalls in its default uncompressed mode on
-                # the Pi while the Logitech and ToF streams are active.
-                usb.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
-                ok, usb_frame = usb.read()
-                if not ok or usb_frame is None:
-                    raise RuntimeError(f'cannot read frame from extra USB camera: {args.usb_camera}')
-                if not cv2.imwrite(str(destination / 'usb-camera.png'), usb_frame):
-                    raise RuntimeError('failed to save extra USB camera frame')
-                metadata_usb_camera = dict(device=args.usb_camera, model='Realtek Generic USB Camera',
-                                           capture_unix_s=time.time(), width=int(usb_frame.shape[1]),
-                                           height=int(usb_frame.shape[0]))
-            finally:
-                usb.release()
+            ok, usb_frame = usb.read()
+            if not ok or usb_frame is None:
+                raise RuntimeError(f'cannot read frame from extra USB camera: {args.usb_camera}')
+            if not cv2.imwrite(str(destination / 'usb-camera.png'), usb_frame):
+                raise RuntimeError('failed to save extra USB camera frame')
+            metadata_usb_camera = dict(device=args.usb_camera, model='Realtek Generic USB Camera',
+                                       capture_unix_s=time.time(), width=int(usb_frame.shape[1]),
+                                       height=int(usb_frame.shape[0]))
             np.save(destination / 'depth-mm.npy', image_array(d, '32FC1', 'float32'))
             if args.auxiliary:
                 for name, stream in [('amplitude', amplitude), ('confidence', confidence)]:
@@ -126,6 +125,8 @@ def main():
         report = captures[0] if args.frames == 1 else dict(frames=len(captures), first=captures[0], last=captures[-1])
         print(json.dumps(report))
     finally:
+        if usb is not None:
+            usb.release()
         node.destroy_node()
         rclpy.shutdown()
 

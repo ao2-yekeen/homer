@@ -1,26 +1,83 @@
-# Fill with measured values; never use servo commands as measured camera pitch.
 enable_motion: false
 qualified: false
 views:
-  - {servo_deg: 90, tof_to_base: null}
-  - {servo_deg: 130, tof_to_base: null}
-settle_s: [4.0, 4.0] # provisional; replace after measurement
+- servo_deg: 90
+  tof_to_base: null
+- servo_deg: 130
+  tof_to_base: null
+settle_s:
+- 4.0
+- 4.0
 search_s: 8.0
-rgb_shape: [480, 640]
-tof_shape: [180, 240]
-rgb_K: null
-rgb_D: null
-tof_K: null
-tof_D: null
-tof_to_rgb: null
+rgb_shape:
+- 480
+- 640
+tof_shape:
+- 180
+- 240
+rgb_K:
+- - 544.7504068976342
+  - 0.0
+  - 319.37222183193495
+- - 0.0
+  - 543.9102192676377
+  - 240.12993805596778
+- - 0.0
+  - 0.0
+  - 1.0
+rgb_D:
+- 0.11102441796376603
+- 0.03506219563010193
+- 0.0
+- 0.0
+- 0.0
+tof_K:
+- - 186.67102065611428
+  - 0.0
+  - 118.29938023664212
+- - 0.0
+  - 187.99812178039858
+  - 89.83148878185285
+- - 0.0
+  - 0.0
+  - 1.0
+tof_D:
+- 0.022289267359036257
+- -0.013939392912668517
+- 0.0
+- 0.0
+- 0.0
+tof_to_rgb:
+- - 0.9998469906895084
+  - -0.014942735751900056
+  - 0.009094495993888906
+  - -0.0713066206618467
+- - 0.013729628335279081
+  - 0.9925177106990697
+  - 0.12132638317551918
+  - -0.006068114248508951
+- - -0.010839396427342034
+  - -0.12118295505939229
+  - 0.9925710044566909
+  - 0.12168403168188754
+- - 0.0
+  - 0.0
+  - 0.0
+  - 1.0
 lidar_to_base: null
-depth_semantics: unvalidated
+depth_semantics: radial
 depth_min_m: 0.05
 depth_max_m: 2.0
 floor_reject_m: 0.015
 max_floor_fraction: 0.2
 max_object_depth_span_m: 0.15
 min_samples: 12
+confidence_min: 30
+confidence_threshold_source: Arducam SDK example default; provisional, not an accuracy
+  qualification
+registration_triangle_step_m: 0.05
+registration_refine_background: true
+registration_max_shift_px: 80
 front_edge_m: null
 forward_command: null
 turn_command: null
@@ -44,4 +101,9 @@ braking_measured: false
 lidar_pose_measured: false
 stationary_distance_verified: false
 model_benchmarked: false
-movement_blocker: 'LATENCY_BLOCKER: Pi inference p99 0.988 s exceeds 0.500 s; calibration and drive measurements incomplete'
+movement_blocker: 'LATENCY_BLOCKER: Pi inference p99 0.988 s exceeds 0.500 s; calibration
+  and drive measurements incomplete'
+alignment_source: depth-anchored checkerboard planes; provisional held-out projection
+  checks
+depth_semantics_source: provisional choice from board-pose comparison; not independently
+  validated

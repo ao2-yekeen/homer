@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Offline named-object mask and floor-contact diagnostic. No ROS or motion.
+"""Offline visual-object surface distance. No floor, ROS or motion required.
 
-The numeric front clearance is emitted only from fully measured calibration.
+Return provisional camera-to-visible-surface range using RGB/ToF alignment.
 Saved-image inference latency does not qualify online perception.
 """
 import argparse
@@ -16,10 +16,13 @@ from pathlib import Path
 import cv2
 import numpy as np
 import yaml
+from capture_preview import data_file, depth_preview
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from approach_object.geometry import Identity, transform
 from approach_object.visual_target import VisualTarget
+from approach_object.surface_distance import select_surface, segment_object, STATES
+from approach_object.depth_registration import point_footprints, refine_translation
 from approach_object.named_object_pin import (MODEL_SHA256, DEPENDENCIES, CLIP_REVISION,
     TEXT_ENCODER_SHA256, TEXT_ENCODER_URL, ensure_asset)
 
@@ -39,9 +42,9 @@ def load_inputs(path):
     frames = []
     previous = None
     for folder in folders:
-        meta = json.loads((folder / 'capture.json').read_text())
+        meta = json.loads(data_file(folder, 'capture.json').read_text())
         rgb = cv2.imread(str(folder / 'rgb.png'), cv2.IMREAD_COLOR)
-        depth_path = folder / 'depth-mm.npy'
+        depth_path = data_file(folder, 'depth-mm.npy')
         if rgb is None or not depth_path.is_file():
             raise ValueError(f'{folder}: RGB image or depth-mm.npy missing/unreadable')
         depth = np.load(depth_path, allow_pickle=False)
@@ -79,76 +82,18 @@ def unletterbox_mask(mask, shape):
     return cv2.resize(mask[y0:y1, x0:x1], (w, h), interpolation=cv2.INTER_NEAREST) > .5
 
 
-def project_native(depth_mm, calibration, rgb_shape):
-    """Project samples to RGB, retaining their original ToF (x,y) indices."""
-    h, w = depth_mm.shape
-    yy, xx = np.indices((h, w))
-    raw = np.asarray(depth_mm, dtype=float).ravel() * .001
-    uv = np.column_stack((xx.ravel(), yy.ravel())).astype(float)
-    rays = cv2.undistortPoints(uv.reshape(-1, 1, 2), np.asarray(calibration['tof_K'], float),
-                               np.asarray(calibration['tof_D'], float)).reshape(-1, 2)
-    rays = np.column_stack((rays, np.ones(len(rays))))
-    semantics = calibration.get('depth_semantics')
-    if semantics == 'radial':
-        rays /= np.linalg.norm(rays, axis=1)[:, None]
-    elif semantics != 'optical_z':
-        raise ValueError('depth_semantics must be radial or optical_z')
-    valid = np.isfinite(raw) & (raw >= float(calibration.get('depth_min_m', .05))) & (raw <= float(calibration.get('depth_max_m', 4)))
-    indices = np.flatnonzero(valid)
-    points = rays[valid] * raw[valid, None]
-    rgb_points = transform(points, calibration['tof_to_rgb'])
-    front = rgb_points[:, 2] > 0
-    indices, points, rgb_points = indices[front], points[front], rgb_points[front]
-    if not len(rgb_points):
-        return indices, np.empty((0, 2), dtype=int), points
-    projected, _ = cv2.projectPoints(rgb_points, np.zeros(3), np.zeros(3),
-                                     np.asarray(calibration['rgb_K'], float), np.asarray(calibration['rgb_D'], float))
-    pixels = np.rint(projected.reshape(-1, 2)).astype(int)
+def project_native(depth_mm, calibration, rgb_shape, offset=(0., 0.)):
+    """Return unique native samples surviving a surface depth buffer."""
+    owners, points, _, projected = point_footprints(depth_mm, calibration, rgb_shape, offset)
+    indices = np.unique(owners[owners >= 0])
+    pixels = np.rint(projected[indices]).astype(int)
     rh, rw = rgb_shape
     inside = (pixels[:, 0] >= 0) & (pixels[:, 0] < rw) & (pixels[:, 1] >= 0) & (pixels[:, 1] < rh)
-    indices, pixels, points = indices[inside], pixels[inside], points[inside]
-    if len(indices):
-        # Keep only the frontmost ToF return when multiple native pixels land
-        # on the same RGB pixel. This avoids counting a background wall behind
-        # a visible target silhouette in the projected target surface.
-        linear = pixels[:, 1].astype(np.int64) * rw + pixels[:, 0]
-        order = np.lexsort((rgb_points[inside, 2], linear))
-        ordered_pixels, ordered_indices = linear[order], order
-        first = np.r_[True, ordered_pixels[1:] != ordered_pixels[:-1]]
-        keep = ordered_indices[first]
-        indices, pixels, points = indices[keep], pixels[keep], points[keep]
-    return indices, pixels, points
-
-
-def calibration_blocker(c, meta, shape, depth_shape, servo_deg):
-    if meta['rgb_frame'] != c.get('rgb_frame') or meta['tof_frame'] != c.get('tof_frame'):
-        return 'CAPTURE_BLOCKER: frame IDs do not match calibration'
-    if tuple(shape) != tuple(c.get('rgb_shape', ())) or tuple(depth_shape) != tuple(c.get('tof_shape', ())):
-        return 'CALIBRATION_BLOCKER: image dimensions do not match calibrated dimensions'
-    for flag in FLAGS:
-        if c.get(flag) is not True:
-            return f'CALIBRATION_BLOCKER: {flag} is not qualified'
-    if c.get('depth_semantics') not in ('radial', 'optical_z'):
-        return 'CALIBRATION_BLOCKER: depth semantics are unknown'
-    for key in ('rgb_K', 'rgb_D', 'tof_K', 'tof_D', 'tof_to_rgb', 'front_edge_m', 'rgb_frame', 'tof_frame', 'rgb_shape', 'tof_shape'):
-        if c.get(key) is None:
-            return f'CALIBRATION_BLOCKER: {key} is missing'
-    if servo_deg is None:
-        return 'POSE_BLOCKER: servo command at acquisition is unknown'
-    held_command = meta.get('servo_command_deg')
-    if held_command is None or not np.isfinite(held_command) or abs(held_command - servo_deg) > .01:
-        return 'POSE_BLOCKER: capture does not record the requested servo command at acquisition'
-    views = c.get('views')
-    if not isinstance(views, list) or not views:
-        return 'CALIBRATION_BLOCKER: calibrated view poses are missing'
-    view = min(views, key=lambda item: abs(float(item.get('servo_deg', 1e9))-servo_deg))
-    if abs(float(view.get('servo_deg', 1e9))-servo_deg) > .01 or view.get('tof_to_base') is None:
-        return 'CALIBRATION_BLOCKER: no measured ToF-to-base pose for this servo command'
-    return None
+    return indices[inside], pixels[inside], points[indices[inside]]
 
 
 def projection_geometry(c, rgb_shape, depth_shape, nominal=None, factory_metadata=None):
-    """Allow explicit nominal previews without qualifying metric clearance."""
+    """Validate RGB/ToF projection geometry independently of robot geometry."""
     if nominal is None:
         geometry = c
     else:
@@ -180,106 +125,96 @@ def projection_geometry(c, rgb_shape, depth_shape, nominal=None, factory_metadat
     return geometry
 
 
-def analyse_mask(mask, depth, confidence, c, meta, servo_deg, nominal=None, urdf_geometry=None):
-    """Return masks even when measured geometry cannot support clearance."""
+def analyse_mask(mask, depth, confidence, c, meta, servo_deg=None, nominal=None, urdf_geometry=None, rgb=None, amplitude=None, evidence=None):
+    """Associate visible RGB extent with ToF range; no floor/servo pose needed.
+
+    Legacy clearance fields remain null for consumers; motion has no authority.
+    The third return is the accepted surface mask, not a floor contact mask.
+    """
     native = np.zeros(depth.shape, np.uint8)
-    contact_native = np.zeros(depth.shape, np.uint8)
+    accepted_native = np.zeros(depth.shape, np.uint8)
     diagnostics = dict(clearance_m=None, visible_surface_range_m=None,
-                       surface_range_reason='no reliable associated surface',
-                       contact_samples=0, projection_available=False)
-    blocker = calibration_blocker(c, meta, mask.shape, depth.shape, servo_deg)
-    if not mask.any():
-        return diagnostics | {'reason': 'segmentation mask is empty'}, native, contact_native
+                       distance_cm=None, distance_status='unavailable',
+                       distance_origin='tof_camera', surface_samples=0,
+                       surface_range_reason='no associated visible surface',
+                       projection_available=False)
     try:
-        if meta['rgb_frame'] != c.get('rgb_frame') or meta['tof_frame'] != c.get('tof_frame'):
+        if not mask.any():
+            raise ValueError('segmentation mask is empty')
+        if meta.get('rgb_frame') != c.get('rgb_frame') or meta.get('tof_frame') != c.get('tof_frame'):
             raise ValueError('CAPTURE_BLOCKER: frame IDs do not match calibration')
-        factory = meta.get('tof_camera_metadata')
-        geometry = projection_geometry(c, mask.shape, depth.shape, nominal, factory)
-        indices, pixels, points = project_native(depth, geometry, mask.shape)
-        eroded = cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
-        in_object = eroded[pixels[:, 1], pixels[:, 0]]
-        confidence_blocker = None
-        if confidence is not None:
-            if confidence.shape != depth.shape:
-                raise ValueError('confidence dimensions differ from ToF depth')
-            if c.get('confidence_min') is None:
-                confidence_blocker = 'QUALITY_BLOCKER: no calibrated confidence_min'
-            else:
-                threshold = float(c['confidence_min'])
-                if not np.isfinite(threshold) or threshold < 0:
-                    raise ValueError('QUALITY_BLOCKER: invalid confidence_min')
-                in_object &= np.isfinite(confidence.ravel()[indices]) & (confidence.ravel()[indices] >= threshold)
-        elif c.get('confidence_min') is not None:
-            confidence_blocker = 'QUALITY_BLOCKER: required confidence stream is missing'
-        native.ravel()[indices[in_object]] = 255
-        ys = np.where(mask)[0]
-        contact_rgb = mask & (np.indices(mask.shape)[0] >= np.quantile(ys, .90))
-        contact_eroded = cv2.erode(contact_rgb.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
-        selected = contact_eroded[pixels[:, 1], pixels[:, 0]] & in_object
-        contact_native.ravel()[indices[selected]] = 255
-        diagnostics.update(projection_available=True, native_object_samples=int(in_object.sum()),
-                           candidate_contact_samples=int(selected.sum()),
-                           mask_clipped=bool(mask[-2:, :].any() or mask[:2, :].any() or mask[:, :2].any() or mask[:, -2:].any()),
-                           confidence_filter_applied=confidence is not None and c.get('confidence_min') is not None)
-        diagnostics['projection_provenance'] = dict(
-            tof_intrinsics='SDK factory controls' if nominal and factory and factory.get('factory_intrinsics_available') else ('nominal FOV' if nominal else 'calibration file'),
-            depth_semantics=geometry['depth_semantics'], qualified=blocker is None and nominal is None)
-        if in_object.any():
-            ranges = np.linalg.norm(points[in_object], axis=1)
-            percentiles = np.percentile(ranges, [5, 50, 95])
-            diagnostics['raw_object_range_percentiles_m'] = percentiles.tolist()
-            diagnostics['tof_boundary_clipped'] = bool(native[0].any() or native[-1].any()
-                                                       or native[:, 0].any() or native[:, -1].any())
-            surface_blocker = next((f'{flag} is not qualified' for flag in
-                ('intrinsics_measured', 'alignment_measured', 'depth_validated')
-                if c.get(flag) is not True), None)
-            if nominal is not None:
-                surface_blocker = 'nominal projection is unqualified'
-            if confidence_blocker:
-                surface_blocker = confidence_blocker
-            if in_object.sum() < max(12, int(c.get('min_samples', 12))):
-                surface_blocker = 'insufficient visible surface samples'
-            if percentiles[2] - percentiles[0] > float(c.get('max_object_depth_span_m', .15)):
-                surface_blocker = 'visible surface spread too large; possible mixed returns'
-            diagnostics['surface_range_reason'] = surface_blocker or 'range to observed surface; unseen extent unknown'
-            if surface_blocker is None:
-                diagnostics['visible_surface_range_m'] = float(percentiles[1])
-        if selected.any():
-            diagnostics['depth_spread_m'] = float(np.ptp(np.linalg.norm(points[selected], axis=1)))
-        if urdf_geometry is not None and selected.any():
-            model_points = transform(points[selected], urdf_geometry['tof_to_base'])
-            diagnostics['urdf_contact_probe'] = dict(
-                labels='ESTIMATED / UNQUALIFIED',
-                height_p5_p50_p95_m=np.percentile(model_points[:, 2], [5, 50, 95]).tolist(),
-                candidate_floor_samples=int((np.abs(model_points[:, 2]) <= float(c.get('floor_reject_m', .015))).sum()),
-                front_clearance_m=None,
-                reason='URDF body origins and estimated optical pitch; no metric qualification')
-        if blocker or confidence_blocker or nominal is not None:
-            raise ValueError(blocker or confidence_blocker or 'CALIBRATION_BLOCKER: nominal geometry cannot provide verified clearance')
-        if diagnostics['mask_clipped']:
-            raise ValueError('contact region clipped by image boundary')
-        if selected.sum() < max(12, int(c.get('min_samples', 12))):
-            raise ValueError('insufficient reliable projected contact samples')
-        if diagnostics['depth_spread_m'] > float(c.get('max_object_depth_span_m', .15)):
-            raise ValueError('contact depth spread too large; mixed background or floor returns')
-        view = min(c['views'], key=lambda item: abs(float(item['servo_deg']) - servo_deg))
-        base = transform(points[selected], view['tof_to_base'])
-        floor_support = np.abs(base[:, 2]) <= float(c.get('floor_reject_m', .015))
-        base_contact = base[floor_support]
-        if len(base_contact) < max(12, int(c.get('min_samples', 12))):
-            raise ValueError('ambiguous floor contact: insufficient samples on calibrated floor plane')
-        clearance = float(np.median(base_contact[:, 0]) - float(c['front_edge_m']))
-        if not np.isfinite(clearance) or clearance < 0:
-            raise ValueError('invalid contact clearance or contact behind robot front edge')
-        contact_native[:] = 0
-        contact_native.ravel()[indices[selected][floor_support]] = 255
-        diagnostics.update(clearance_m=clearance, contact_samples=len(base_contact),
-                           reason='calibrated stationary estimate; physical tape validation required')
+        geometry = projection_geometry(c, mask.shape, depth.shape, nominal, meta.get('tof_camera_metadata'))
+        confidence_applied = False
+        reliable = np.ones(depth.shape, bool)
+        if confidence is not None and confidence.shape != depth.shape:
+            raise ValueError('confidence dimensions differ from ToF depth')
+        if c.get('confidence_min') is not None:
+            threshold = float(c['confidence_min'])
+            if not np.isfinite(threshold) or threshold < 0:
+                raise ValueError('invalid confidence_min')
+            if confidence is None:
+                raise ValueError('required confidence stream is missing')
+            # Preserve membership even when the measurement cannot support range.
+            reliable = np.isfinite(confidence) & (confidence >= threshold)
+            confidence_applied = True
+        owners, all_points, _, projected = point_footprints(depth, geometry, mask.shape)
+        registration = dict(status='unavailable', offset_xy_px=[0., 0.], reason='RGB/IR refinement inputs missing', qualified=False)
+        if rgb is not None and c.get('registration_refine_background', True) and nominal is None:
+            offset, registration = refine_translation(rgb, amplitude, owners, mask, geometry)
+            if registration['status'] == 'provisional':
+                owners, all_points, _, projected = point_footprints(depth, geometry, mask.shape, offset)
+            # A failed cross-modal fit provides no displacement evidence.
+            # Keep the measured calibration rather than treating an unsupported
+            # optimizer proposal as proof that geometry is wrong.
+        registration['applied'] = registration['status'] == 'provisional'
+        registration['geometry_used'] = ('calibration_plus_background_translation'
+                                         if registration['applied'] else 'calibration')
+        registration['alignment_evidence'] = ('supported_translation'
+                                              if registration['applied'] else 'inconclusive')
+        indices, in_object, support, native, accepted_native, membership_info, maps = segment_object(
+            mask, depth, owners, all_points, projected, reliable, c)
+        points = all_points[indices]
+        valid_owners = owners >= 0
+        diagnostics.update(membership_info)
+        warnings = []
+        if registration['status'] == 'provisional':
+            warnings.append(registration['reason'])
+        else:
+            warnings.append('using fitted geometry; background alignment check inconclusive: '
+                            + registration.get('reason', 'no supported translation'))
+        if confidence is not None and not confidence_applied:
+            warnings.append('confidence stream has no calibrated threshold; not used')
+        kept, surface = select_surface(indices, points, support, depth.shape, c)
+        accepted_native[:] = 0
+        accepted_native.ravel()[indices[kept]] = 255
+        maps['sample_state'][maps['sample_state'] == 6] = 5
+        maps['sample_state'].ravel()[indices[kept]] = 6
+        diagnostics['sample_audit_counts'] = {name: int((maps['sample_state'] == code).sum())
+                                            for code, name in STATES.items()}
+        if evidence is not None:
+            evidence.update(maps)
+        diagnostics.update(surface)
+        diagnostics.update(projection_available=True, frame_registration=registration,
+                           visibility_method='bounded_native_point_footprints_zbuffer',
+                           registered_rgb_depth_coverage=float(valid_owners.mean()),
+                           native_object_samples=int(in_object.sum()),
+                           rejected_surface_samples=int(in_object.sum()-kept.sum()),
+                           object_depth_samples=int(in_object.sum()),
+                           distance_support_fraction=float(kept.sum()/max(in_object.sum(), 1)),
+                           object_depth_definition='visible target membership from RGB-guided native graph; SDK reliability affects distance support separately',
+                           mask_clipped=bool(mask[0].any() or mask[-1].any() or mask[:, 0].any() or mask[:, -1].any()),
+                           tof_boundary_clipped=bool(native[0].any() or native[-1].any() or native[:, 0].any() or native[:, -1].any()),
+                           confidence_filter_applied=False,
+                           confidence_reliability_threshold_applied=confidence_applied,
+                           quality_warnings=warnings,
+                           projection_provenance=dict(source='nominal' if nominal else c.get('alignment_source', 'calibration file'),
+                                                      depth_semantics=geometry['depth_semantics'],
+                                                      qualified=nominal is None and registration['status'] != 'provisional' and all(c.get(f) is True for f in
+                                                          ('intrinsics_measured', 'alignment_measured', 'depth_validated'))))
+        diagnostics['reason'] = diagnostics['surface_range_reason']
     except (ValueError, KeyError, TypeError, IndexError, cv2.error) as e:
-        diagnostics['reason'] = str(e)
-        if blocker and blocker != str(e):
-            diagnostics['calibration_blocker'] = blocker
-    return diagnostics, native, contact_native
+        diagnostics.update(reason=str(e), surface_range_reason=str(e))
+    return diagnostics, native, accepted_native
 
 
 def main():
@@ -292,14 +227,15 @@ def main():
     p.add_argument('--capture', required=True, help='single capture directory or frame-NNN burst')
     p.add_argument('--calibration', required=True)
     p.add_argument('--servo-deg', type=float, help='known servo command at acquisition; omit if unknown')
-    p.add_argument('--urdf', help='robot model for unqualified contact-height diagnostics')
+    p.add_argument('--urdf', help=argparse.SUPPRESS) # Legacy argument; range uses no robot pose.
     p.add_argument('--nominal', action='store_true', help='explicitly enable unqualified nominal ToF projection previews')
     p.add_argument('--rgb-diagonal-deg', type=float, default=90.)
     p.add_argument('--tof-diagonal-deg', type=float, default=70.)
     p.add_argument('--baseline-x-m', type=float, default=.04)
     p.add_argument('--nominal-depth-semantics', choices=('radial', 'optical_z'), default='radial')
     p.add_argument('--imgsz', type=int, default=640, help='stationary inference input size; 640 default, 960 tested for box')
-    p.add_argument('--reference-clearance-m', type=float, help='independent operator measurement for this captured scene')
+    p.add_argument('--reference-clearance-m', type=float, help=argparse.SUPPRESS)
+    p.add_argument('--reference-distance-cm', type=float, help='measured distance from ToF camera to visible object surface')
     p.add_argument('--output', required=True)
     a = p.parse_args()
     target = a.target.strip() if a.target is not None else ('selected object' if a.reference else '')
@@ -321,6 +257,8 @@ def main():
         p.error('--imgsz must be a multiple of 32 between 320 and 1280')
     if a.reference_clearance_m is not None and (not np.isfinite(a.reference_clearance_m) or a.reference_clearance_m < 0):
         p.error('--reference-clearance-m must be finite and nonnegative')
+    if a.reference_distance_cm is not None and (not np.isfinite(a.reference_distance_cm) or a.reference_distance_cm <= 0):
+        p.error('--reference-distance-cm must be finite and positive')
     nominal = None
     if a.nominal:
         if not all(0 < v < 180 for v in (a.rgb_diagonal_deg, a.tof_diagonal_deg)) or not np.isfinite(a.baseline_x_m):
@@ -333,15 +271,7 @@ def main():
         p.error('checkpoint differs from screened YOLOE-26n-seg (SHA-256 mismatch)')
     c = yaml.safe_load(Path(a.calibration).read_text())
     frames = load_inputs(a.capture)
-    urdf_geometry = None
-    if a.urdf:
-        angle = estimated_view_angle(a.servo_deg)
-        if angle is None:
-            p.error('--urdf requires a known command within the estimated head mapping')
-        from approach_object.urdf_geometry import camera_geometry
-        urdf_geometry = camera_geometry(a.urdf, 90-angle)
-        urdf_geometry['source_sha256'] = hashlib.sha256(Path(a.urdf).read_bytes()).hexdigest()
-        urdf_geometry['pitch_source'] = 'existing image-derived head mapping; not shaft feedback'
+    urdf_geometry = None # Robot pose is not used for camera surface range.
     runtime_dependencies = {}
     for package, required in DEPENDENCIES.items():
         try:
@@ -375,7 +305,7 @@ def main():
     identity = Identity()
     visual_identity = VisualTarget() if reference is not None else None
     visual_prompt_ready = False
-    records, native_masks, contact_masks = [], [], []
+    records, native_masks, surface_masks = [], [], []
     first_rgb_mask = None
     for index, (folder, meta, rgb, depth) in enumerate(frames):
         rec = dict(frame=folder.name, rgb_stamp=meta['rgb_stamp'], tof_stamp=meta['depth_stamp'],
@@ -385,13 +315,15 @@ def main():
                    capture_servo_command_deg=meta.get('servo_command_deg'),
                    capture_pose_source=meta.get('pose_source', 'not recorded'),
                    rgb_sha256=hashlib.sha256((folder/'rgb.png').read_bytes()).hexdigest(),
-                   depth_sha256=hashlib.sha256((folder/'depth-mm.npy').read_bytes()).hexdigest(),
+                   depth_sha256=hashlib.sha256(data_file(folder, 'depth-mm.npy').read_bytes()).hexdigest(),
                    detected=False, clearance_m=None, visible_surface_range_m=None,
+                   distance_cm=None, distance_status='unavailable', surface_samples=0,
                    visibility='lost', reason='')
         inference_started = time.perf_counter()
         mask = np.zeros(rgb.shape[:2], bool)
         native = np.zeros(depth.shape, np.uint8)
-        contact_native = np.zeros(depth.shape, np.uint8)
+        surface_native = np.zeros(depth.shape, np.uint8)
+        evidence = {}
         try:
             predict_options = {}
             if visual_identity is not None and not visual_prompt_ready:
@@ -423,20 +355,29 @@ def main():
                 rec['visibility'] = 'visible_extent_unknown'
             if index == 0:
                 first_rgb_mask = mask
-            confidence_file = folder / 'confidence.npy'
+            confidence_file = data_file(folder, 'confidence.npy')
             confidence = np.load(confidence_file, allow_pickle=False) if confidence_file.is_file() else None
-            diagnostics, native, contact_native = analyse_mask(mask, depth, confidence, c, meta, a.servo_deg, nominal, urdf_geometry)
+            amplitude_file = data_file(folder, 'amplitude.npy')
+            amplitude = np.load(amplitude_file, allow_pickle=False) if amplitude_file.is_file() else None
+            diagnostics, native, surface_native = analyse_mask(mask, depth, confidence, c, meta, a.servo_deg, nominal, urdf_geometry,
+                                                               rgb=rgb, amplitude=amplitude, evidence=evidence)
             rec.update(diagnostics)
         except (ValueError, KeyError, TypeError, IndexError, cv2.error) as e:
             rec['reason'] = str(e)
+            rec['distance_status'] = 'ambiguous' if 'ambiguous' in str(e) else 'unavailable'
             if not rec['detected']:
                 rec['visibility'] = 'ambiguous' if 'ambiguous' in str(e) else 'lost'
         native_masks.append(native)
-        contact_masks.append(contact_native)
+        surface_masks.append(surface_native)
         rec['processing_latency_s'] = time.perf_counter() - inference_started
-        destination = output / f'frame-{index:03d}'
-        save_artifacts(destination, folder, rgb, depth, mask, native, contact_native, target)
-        rec['artifact_directory'] = destination.name
+        destination = output if len(frames) == 1 else output / 'frames' / f'frame-{index:03d}'
+        save_artifacts(destination, folder, rgb, depth, mask, native, surface_native, target, rec,
+                       projection_geometry(c, mask.shape, depth.shape, nominal, meta.get('tof_camera_metadata')) if rec.get('projection_available') else None)
+        if evidence:
+            save_evidence(destination, evidence)
+            if index == 0 and len(frames) > 1:
+                save_evidence(output, evidence)
+        rec['artifact_directory'] = str(destination.relative_to(output))
         records.append(rec)
 
     elapsed = time.perf_counter() - started
@@ -444,15 +385,28 @@ def main():
     folder, meta, rgb, depth = frames[0]
     mask = first_rgb_mask if first_rgb_mask is not None else np.zeros(rgb.shape[:2], bool)
     native = native_masks[0]
-    contact = contact_masks[0]
-    save_artifacts(output, folder, rgb, depth, mask, native, contact, target)
+    surface = surface_masks[0]
+    if len(frames) > 1:
+        save_artifacts(output, folder, rgb, depth, mask, native, surface, target, records[0],
+                       projection_geometry(c, mask.shape, depth.shape, nominal, meta.get('tof_camera_metadata')) if records[0].get('projection_available') else None)
 
-    valid_clearances = [r['clearance_m'] for r in records if r.get('clearance_m') is not None]
-    aggregate_clearance = float(np.median(valid_clearances)) if valid_clearances and len(valid_clearances) == len(records) else None
-    error = abs(aggregate_clearance - a.reference_clearance_m) if aggregate_clearance is not None and a.reference_clearance_m is not None else None
-    blocker = next((r['reason'] for r in records if r.get('clearance_m') is None), None)
-    confidence_path = folder/'confidence.npy'
-    report = dict(mode='OFFLINE_VISUAL_TARGET_DIAGNOSTIC' if reference is not None else 'OFFLINE_NAMED_OBJECT_FLOOR_CONTACT_DIAGNOSTIC', target=target,
+    distances = [r['distance_cm'] for r in records if r.get('distance_cm') is not None]
+    all_readable = len(distances) == len(records)
+    # Do not hide disagreeing frames behind a median. Require the measured
+    # surface intervals to overlap without adding a scene-specific tolerance.
+    intervals = [r.get('surface_range_percentiles_cm') for r in records]
+    interval_overlap = None
+    if all_readable and all(v is not None for v in intervals):
+        interval_overlap = [max(v[0] for v in intervals), min(v[2] for v in intervals)]
+    consistent = (interval_overlap is not None and interval_overlap[0] <= interval_overlap[1])
+    aggregate_distance = float(np.median(distances)) if all_readable and consistent else None
+    aggregate_clearance = None
+    error = abs(aggregate_distance-a.reference_distance_cm) if aggregate_distance is not None and a.reference_distance_cm is not None else None
+    blocker = next((r['reason'] for r in records if r.get('distance_cm') is None), None)
+    if all_readable and not consistent:
+        blocker = 'consecutive surface range intervals disagree; no aggregate distance'
+    confidence_path = data_file(folder, 'confidence.npy')
+    report = dict(mode='OFFLINE_VISUAL_TARGET_DIAGNOSTIC' if reference is not None else 'OFFLINE_OBJECT_SURFACE_DISTANCE', target=target,
                   prompt_mode='visual' if reference is not None else 'text',
                   reference_sha256=hashlib.sha256(a.reference.read_bytes()).hexdigest() if reference is not None else None,
                   reference_box=a.box, selection_box=a.selection_box,
@@ -466,17 +420,27 @@ def main():
                   pinned_dependencies=DEPENDENCIES,
                   servo_command_deg=a.servo_deg, estimated_mast_viewing_angle_deg=estimated_view_angle(a.servo_deg),
                   observations=records, clearance_m=aggregate_clearance,
-                  physical_reference_clearance_m=a.reference_clearance_m,
-                  physical_validation=dict(status='not_evaluable' if error is None else ('pass_this_scene' if error <= .05 else 'fail_this_scene'),
-                                           absolute_error_m=error, tolerance_m=.05,
+                  distance_cm=aggregate_distance, distance_origin='tof_camera',
+                  depth_statistic='median', aggregation_statistic='median_of_frame_medians',
+                  distance_status='provisional' if aggregate_distance is not None else ('ambiguous' if (all_readable and not consistent) or any(r.get('distance_status') == 'ambiguous' for r in records) else 'unavailable'),
+                  temporal_consistency=dict(frames=len(records), all_frames_readable=all_readable,
+                                            status=('single_frame' if len(records) == 1 and consistent else
+                                                    'consistent' if consistent else 'inconsistent' if all_readable else 'not_evaluable'),
+                                            frame_distances_cm=[r.get('distance_cm') for r in records],
+                                            shared_surface_interval_cm=interval_overlap if consistent else None,
+                                            criterion='overlap of measured P5-P95 surface range intervals; not an accuracy bound'),
+                  visible_surface_range_m=aggregate_distance/100 if aggregate_distance is not None else None,
+                  reference_distance_cm=a.reference_distance_cm,
+                  physical_validation=dict(status='not_evaluable' if error is None else ('pass_this_scene' if error <= 5.0 else 'fail_this_scene'),
+                                           absolute_error_cm=error, tolerance_cm=5.0,
                                            qualification_complete=False),
-                  contact_samples=int(records[0].get('contact_samples', 0)),
-                  depth_spread_m=records[0].get('depth_spread_m'),
-                  quality_reason=blocker or 'stationary estimate; physical tape validation required',
+                  surface_samples=int(records[0].get('surface_samples', 0)),
+                  surface_depth_spread_cm=records[0].get('surface_depth_spread_cm'),
+                  quality_reason=blocker or 'estimated visible surface range; accuracy unverified',
                   calibration_provenance={'path':str(Path(a.calibration)), 'flags':{f:c.get(f) for f in FLAGS},
                                            'sha256':hashlib.sha256(Path(a.calibration).read_bytes()).hexdigest(),
                                            'depth_semantics':c.get('depth_semantics'),
-                                           'front_edge_m':c.get('front_edge_m')},
+                                           'alignment_source':c.get('alignment_source')},
                   nominal_geometry=nominal, urdf_geometry=urdf_geometry,
                   geometry_assumptions=[] if nominal is None else ['parallel optical axes', 'centred uncropped RGB pinhole image', 'assumed ToF ' + a.nominal_depth_semantics,
                       'nominal RGB FOV; current crop unvalidated', 'SDK ToF K when available, nominal ToF FOV otherwise', 'unknown distortion assumed zero for preview'],
@@ -485,47 +449,77 @@ def main():
                   setup_latency_s=setup_latency,
                   processing_latency_s=elapsed, motion_authority=False,
                   labels='ESTIMATED / UNQUALIFIED',
-                  artifacts=['object-mask.png','tof-object-mask.png','contact-sample-mask.png',
-                             'annotated-rgb.png','tof-amplitude.png','tof-amplitude-outline.png','masked-depth.png'])
+                  artifacts=['distance.png', 'tof-depth.png', 'isolated-depth.png', 'data/object-mask.png',
+                             'data/tof-object-mask.png', 'data/surface-sample-mask.png', 'data/isolated-depth-mm.npy',
+                             'membership.png', 'sample-states.png', 'data/membership_probability.npy',
+                             'data/rgb_membership_prior.npy', 'data/sample_state.npy', 'data/depth_reliable.npy'])
     (output/'result.json').write_text(json.dumps(report, indent=2, allow_nan=False)+'\n')
     print(json.dumps(report, indent=2, allow_nan=False))
 
 
-def save_artifacts(output, folder, rgb, depth, mask, native, contact, target):
+def save_evidence(output, evidence):
+    """Save machine-readable membership/reliability plus labelled audit views."""
+    data = output / 'data'
+    data.mkdir(parents=True, exist_ok=True)
+    for name, array in evidence.items():
+        np.save(data / (name+'.npy'), array)
+    probability = evidence['membership_probability']
+    image = cv2.applyColorMap((np.nan_to_num(probability)*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+    image[~np.isfinite(probability)] = 0
+    image = cv2.resize(image, None, fx=3, fy=3, interpolation=cv2.INTER_NEAREST)
+    header = np.zeros((45, image.shape[1], 3), np.uint8)
+    cv2.putText(header, 'Membership: purple 0, yellow 1 | black unknown', (8, 27), cv2.FONT_HERSHEY_SIMPLEX, .45, (255,255,255), 1)
+    cv2.imwrite(str(output/'membership.png'), np.vstack((header, image)))
+    palette = np.array([[0,0,0], [100,100,100], [110,60,30], [65,65,65],
+                        [0,180,255], [180,70,180], [70,200,70]], np.uint8)
+    image = cv2.resize(palette[evidence['sample_state']], None, fx=3, fy=3, interpolation=cv2.INTER_NEAREST)
+    header = np.zeros((24*len(STATES), image.shape[1], 3), np.uint8)
+    for code, label in STATES.items():
+        cv2.putText(header, f'{code}: {label}', (8, 20+24*code), cv2.FONT_HERSHEY_SIMPLEX, .45, tuple(int(x) for x in palette[code]) if code else (220,220,220), 1)
+    cv2.imwrite(str(output/'sample-states.png'), np.vstack((header, image)))
+    (data/'sample-state-legend.json').write_text(json.dumps(STATES, indent=2)+'\n')
+
+
+def save_artifacts(output, folder, rgb, depth, mask, native, accepted, target, diagnostics=None, geometry=None):
+    """One RGB distance view, one depth preview; masks are kept under data/."""
     output.mkdir(parents=True, exist_ok=True)
+    diagnostics = diagnostics or {}
     annotated = rgb.copy()
-    annotated[mask] = (.55*annotated[mask] + .45*np.array([0, 255, 0])).astype(np.uint8)
-    cv2.putText(annotated, f'{target} | ESTIMATED / UNQUALIFIED', (8, 24), cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 0, 255), 2)
-    cv2.imwrite(str(output/'object-mask.png'), mask.astype(np.uint8)*255)
-    cv2.imwrite(str(output/'annotated-rgb.png'), annotated)
-    cv2.imwrite(str(output/'tof-object-mask.png'), native)
-    cv2.imwrite(str(output/'contact-sample-mask.png'), contact)
-    if (folder/'amplitude.npy').is_file():
-        amp = np.load(folder/'amplitude.npy', allow_pickle=False).astype(float)
-        finite = np.isfinite(amp)
-        preview = np.zeros(amp.shape, np.uint8)
-        if finite.any():
-            lo, hi = np.percentile(amp[finite], [1, 99])
-            preview[finite] = np.clip((amp[finite]-lo)/max(hi-lo, 1e-6)*255, 0, 255).astype(np.uint8)
-        cv2.imwrite(str(output/'tof-amplitude.png'), preview)
-    else:
-        cv2.imwrite(str(output/'tof-amplitude.png'), np.zeros(depth.shape, np.uint8))
-    amp_outline = cv2.cvtColor(cv2.imread(str(output/'tof-amplitude.png'), cv2.IMREAD_GRAYSCALE), cv2.COLOR_GRAY2BGR)
-    if np.any(native):
-        contours, _ = cv2.findContours(native, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        cv2.drawContours(amp_outline, contours, -1, (0, 255, 255), 1)
-    cv2.imwrite(str(output/'tof-amplitude-outline.png'), amp_outline)
-    depth_m = depth.astype(float)*.001
-    good = np.isfinite(depth_m) & (depth_m >= .05) & (depth_m <= 4)
-    depth_preview = np.zeros(depth.shape, np.uint8)
-    depth_preview[good] = np.clip(depth_m[good]/4*255, 1, 255).astype(np.uint8)
-    masked = cv2.applyColorMap(depth_preview, cv2.COLORMAP_TURBO)
-    masked[native == 0] = (55, 55, 55)
-    masked[~good] = (0, 0, 0)
-    cv2.putText(amp_outline, 'UNQUALIFIED PROJECTION', (3, 12), cv2.FONT_HERSHEY_SIMPLEX, .3, (0, 0, 255), 1)
-    cv2.imwrite(str(output/'tof-amplitude-outline.png'), amp_outline)
-    cv2.putText(masked, 'UNQUALIFIED | black=invalid', (3, 12), cv2.FONT_HERSHEY_SIMPLEX, .3, (255, 255, 255), 1)
-    cv2.imwrite(str(output/'masked-depth.png'), masked)
+    contours, _ = cv2.findContours(mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    cv2.drawContours(annotated, contours, -1, (0, 255, 255), 2)
+    if geometry is not None:
+        offset = diagnostics.get('frame_registration', {}).get('offset_xy_px', [0., 0.])
+        indices, pixels, _ = project_native(depth, geometry, mask.shape, offset)
+        selected = accepted.ravel()[indices] > 0
+        for x, y in pixels[selected]:
+            cv2.circle(annotated, (int(x), int(y)), 1, (255, 0, 255), -1)
+    canvas = np.zeros((rgb.shape[0]+90, rgb.shape[1], 3), np.uint8)
+    canvas[90:] = annotated
+    distance = diagnostics.get('distance_cm')
+    title = f'{distance:.1f} cm | provisional' if distance is not None else 'No distance | ' + diagnostics.get('distance_status', 'unavailable')
+    spread = diagnostics.get('surface_depth_spread_cm')
+    detail = f"ToF camera | {diagnostics.get('surface_samples', 0)} samples"
+    if spread is not None:
+        detail += f' | P5-P95 spread {spread:.1f} cm'
+    for y, text in ((22, title), (46, detail), (72, 'Yellow: object | Magenta: accepted depth samples')):
+        cv2.putText(canvas, text, (8, y), cv2.FONT_HERSHEY_SIMPLEX, .5, (255, 255, 255), 1)
+    cv2.imwrite(str(output/'distance.png'), canvas)
+    cv2.imwrite(str(output/'tof-depth.png'), depth_preview(depth, native))
+    # Object extent must not be replaced by the subset used to estimate range.
+    # Preserve disconnected and uncertain measured patches for inspection.
+    isolated = np.where(native > 0, depth, np.nan)
+    preview = depth_preview(isolated)
+    preview[:60] = 24
+    isolated_title = 'Isolated object | all associated ToF measurements'
+    cv2.putText(preview, isolated_title, (12, 25), cv2.FONT_HERSHEY_SIMPLEX, .55, (255,255,255), 1)
+    cv2.putText(preview, 'Black = outside association or invalid; colour is not validation', (12, 48), cv2.FONT_HERSHEY_SIMPLEX, .43, (255,255,255), 1)
+    cv2.imwrite(str(output/'isolated-depth.png'), preview)
+    data = output / 'data'
+    data.mkdir(exist_ok=True)
+    np.save(data/'isolated-depth-mm.npy', isolated)
+    cv2.imwrite(str(data/'object-mask.png'), mask.astype(np.uint8)*255)
+    cv2.imwrite(str(data/'tof-object-mask.png'), native)
+    cv2.imwrite(str(data/'surface-sample-mask.png'), accepted)
 
 
 if __name__ == '__main__':

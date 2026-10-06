@@ -48,7 +48,7 @@ def prepare_environment(directory):
 
 
 def capture_pi(host, destination, frames, servo_deg=None):
-    remote = '/tmp/homer-named-test-' + uuid.uuid4().hex
+    remote = 'mobile-robot/captures/diagnostic-' + uuid.uuid4().hex
     with tempfile.TemporaryDirectory(prefix='homer-capture-upload-') as temporary:
         root = Path(temporary)
         source = root / 'approach_object'
@@ -94,10 +94,11 @@ def main():
     parser.add_argument('--environment', type=Path)
     parser.add_argument('--calibration', type=Path, default=PACKAGE / 'config/calibration.yaml')
     parser.add_argument('--servo-deg', type=float)
-    parser.add_argument('--urdf', type=Path, help='robot model for unqualified contact geometry checks')
+    parser.add_argument('--urdf', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--nominal', action='store_true')
     parser.add_argument('--imgsz', type=int, default=640)
-    parser.add_argument('--reference-clearance-m', type=float)
+    parser.add_argument('--reference-clearance-m', type=float, help=argparse.SUPPRESS)
+    parser.add_argument('--reference-distance-cm', type=float, help='measured ToF-camera-to-object distance')
     parser.add_argument('--nominal-depth-semantics', choices=('radial', 'optical_z'), default='radial')
     args = parser.parse_args()
     if (args.target is not None and not args.target.strip()) or not (args.target or args.reference) or not 1 <= args.frames <= 100 or not 320 <= args.imgsz <= 1280 or args.imgsz % 32:
@@ -113,11 +114,13 @@ def main():
         parser.error('invalid SSH host alias')
     if args.reference_clearance_m is not None and (not math.isfinite(args.reference_clearance_m) or args.reference_clearance_m < 0):
         parser.error('reference clearance must be finite and nonnegative')
+    if args.reference_distance_cm is not None and (not math.isfinite(args.reference_distance_cm) or args.reference_distance_cm <= 0):
+        parser.error('reference distance must be finite and positive')
     if args.servo_deg is not None and (not math.isfinite(args.servo_deg) or not 80 <= args.servo_deg <= 150):
         parser.error('known servo command must be within 80–150 degrees')
     cache = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home() / '.cache'))) / 'homer'
     trial = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:6]
-    output = (args.output or cache / 'named-object-tests' / trial).resolve()
+    output = (args.output or PACKAGE.parents[1] / 'captures' / 'object-distance' / trial).resolve()
     if output.exists():
         parser.error('output directory already exists; choose a fresh trial destination')
     python = prepare_environment((args.environment or cache / 'yoloe-venv').resolve())
@@ -142,8 +145,8 @@ def main():
         command.extend(['--urdf', str(args.urdf.resolve())])
     if args.nominal:
         command.extend(['--nominal', '--nominal-depth-semantics', args.nominal_depth_semantics])
-    if args.reference_clearance_m is not None:
-        command.extend(['--reference-clearance-m', str(args.reference_clearance_m)])
+    if args.reference_distance_cm is not None:
+        command.extend(['--reference-distance-cm', str(args.reference_distance_cm)])
     # Keep the downloaded text encoder in the persistent model cache.
     run(command, cwd=model.parent)
     (output / 'run.json').write_text(json.dumps(dict(target=args.target, capture=str(capture),
