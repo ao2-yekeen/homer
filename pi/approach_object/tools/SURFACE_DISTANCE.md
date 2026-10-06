@@ -5,7 +5,16 @@ RGB-guided native ToF graph implemented in `approach_object/surface_distance.py`
 Run it through `run_named_object_distance_test.py` with a visual `--reference`
 and `--box`, plus `--capture DIRECTORY`. No floor, robot pose, complete object
 silhouette, object class, known dimensions or expected range is required.
-This path is not yet integrated into the ROS approach controller.
+The saved-frame diagnostic and live preview report a range for inspection;
+neither feeds this value into the approach controller's floor-contact clearance.
+
+The live detector can also publish the same provisional median in its stationary
+recognition preview. Enable `surface_distance:=true` and set
+`recognition_target:=<class>` on the launch command. The JSON observation reports
+`surface_distance_cm`, the `median` statistic, sample count, spread and graph
+status. This is informational; the controller's floor-contact `clearance` and
+validity gate are unchanged. The native graph solve can take seconds on the Pi,
+so this option is for inspection and is disabled in normal launches.
 
 ## Membership and visibility
 
