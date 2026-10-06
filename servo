@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -e
+
+if [[ $# != 1 || ! "$1" =~ ^[0-9]{2,3}$ ]]; then
+  echo "Usage: ./servo ANGLE (80–150)" >&2
+  exit 2
+fi
+angle=$((10#$1))
+if (( angle < 80 || angle > 150 )); then
+  echo "Angle must be 80–150" >&2
+  exit 2
+fi
+
+exec ssh -S none pi "~/mobile-robot/pi/servo $angle"

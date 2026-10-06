@@ -163,7 +163,7 @@ class NeckController:
     degrees_per_second: float = 10.0
     minimum_angle: float = 80.0
     maximum_angle: float = 150.0
-    angle: float = 90.0
+    angle: float = 80.0
 
     def command(self, snapshot: GamepadSnapshot, mode: RobotMode, elapsed_seconds: float) -> int | None:
         if mode is not RobotMode.TELEOP or not button_pressed(

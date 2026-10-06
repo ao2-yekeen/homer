@@ -8,7 +8,7 @@ void NeckServo::begin(uint32_t now_ms) {
   ledcSetup(config::kNeckServoPwmChannel, config::kNeckServoFrequency,
             config::kNeckServoResolution);
   ledcAttachPin(config::kNeckServoPin, config::kNeckServoPwmChannel);
-  current_angle_ = config::kNeckSafeCenterAngle;
+  current_angle_ = config::kNeckDefaultAngle;
   target_angle_ = current_angle_;
   writeAngle(current_angle_);
   last_step_ms_ = now_ms;
