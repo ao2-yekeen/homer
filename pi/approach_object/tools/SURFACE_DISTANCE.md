@@ -98,6 +98,5 @@ valid-depth coverage, ToF-origin range error, failure rate, Pi latency and memor
 
 Capture tools save timestamped directories under the repository's `captures/`
 folder. These files and local `experiment-archives/` bundles are ignored by Git.
-Code, calibration configuration and documentation remain version controlled.
-See `docs/experiments/README.md` for the Drive archive and checksums.
+Experiment data is archived in the Drive Experiments folder.
 No accuracy, generalisation or Pi performance claim follows from implementation.
