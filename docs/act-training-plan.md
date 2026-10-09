@@ -1,147 +1,80 @@
-# Wrist-camera ACT adaptation plan
+# Simple ACT training plan
 
-## Objective
+Train a fresh ACT policy with official LeRobot code and an ImageNet-pretrained
+ResNet-18 visual backbone. Use the USB wrist camera and hand-guided demonstrations
+from Homer's vertically mounted SO-101. Start with one easy foam block, a fixed
+tray and the established raised platform, with the base stationary.
 
-Train a fresh ACT policy using the official LeRobot implementation and an
-ImageNet-pretrained ResNet-18 visual backbone on hand-guided demonstrations
-from Homer's vertically mounted SO-101. Demonstrate a learned
-pick-and-place policy with the base stationary, one foam block, a small raised
-platform region, and a fixed destination tray. No leader arm or gamepad
-demonstrations. Train on Kaggle's free GPU, with Colab as backup.
+## Steps
 
-Use the USB wrist camera, separate from the Logitech camera. Initialize the
-action policy freshly and compute normalization statistics from Homer data.
-The community checkpoint is retained only as an optional comparison.
+1. **Set up ACT.** Use the tested LeRobot version and CPU environment. The
+   existing checkpoint smoke test passed (387 ms median, 478 ms p95), but tested
+   community weights are not the training baseline. Initialize a fresh policy
+   with the pretrained visual backbone and Homer-derived normalization.
+2. **Get recording working.** Check the USB wrist view, test supported hand
+   guidance and gripper operation, then use one Pi recorder to save images,
+   six measured joint positions in raw ticks and timestamps. Start at 10 FPS.
+   Inspect one complete pick-and-place before proceeding. See the
+   [step 2 instructions](act-step-2-teaching-and-sensors.md).
+3. **Collect demonstrations.** Record five successful episodes and inspect them.
+   Then aim for about 50 clean demonstrations across five nearby object positions.
+   Keep the camera, tray and start pose consistent. Discard failed or incomplete
+   episodes. Keep a few whole episodes aside for validation; never randomly
+   split neighboring frames.
+4. **Prepare and train.** Export to the pinned LeRobot format. State is measured
+   ticks; actions are future measured positions, with an explicit tested offset
+   and no crossing of episode boundaries. Compute mean/std statistics from the
+   training split. Use a Kaggle GPU if available, with Colab as backup. Start
+   with batch size 8 and a 200-step smoke run; reload its checkpoint, then train
+   within available compute. Save weights and resumable training state.
+5. **Try the trained policy.** Preview predicted targets without motion first
+   and benchmark the trained configuration. Then test slowly under supervision,
+   using existing joint limits, fresh feedback and an immediate stop. ACT predicts
+   absolute target ticks; the existing accumulated-delta topic cannot be used
+   as an absolute interface. Add a small bounded target adapter when implementing
+   this step. Use short chunks and replan; measure timing before selecting the
+   execution rate or chunk length.
+6. **Improve and evaluate.** Record successful corrections for repeatable failures,
+   retrain, and run 20 supervised trials at withheld positions. Record success,
+   misses and slips. Freeze the camera setup and checkpoint after evaluation.
+   Expand to more objects only once the first task works consistently.
 
-This is an implementation plan, not a validated hardware capability. Freeze
-the setup after evaluation and corrective training.
+## Minimum files to implement
 
-## Optional comparison checkpoint (not the training baseline)
-
-The published checkpoint has one `observation.images.wrist` RGB input with
-shape `[3, 480, 640]`, `observation.state` shape `[6]`, and `action` shape `[6]`.
-It uses ACT with ResNet-18 and 100-action chunks. Its processors use mean/std
-normalisation. Its config includes an author-local `pretrained_path`; replace
-that through the supported loading configuration rather than following it.
-
-Download and pin the complete repository revision:
-
-- `model.safetensors`
-- `config.json`
-- `policy_preprocessor.json`
-- `policy_preprocessor_step_3_normalizer_processor.safetensors`
-- `policy_postprocessor.json`
-- `policy_postprocessor_step_0_unnormalizer_processor.safetensors`
-- `train_config.json` and `README.md` for provenance
-
-The published training config is not an optimizer-state checkpoint. Start a
-new fine-tuning run, not a resume of the author's run. Verify the source dataset
-joint order, position representation, gripper scale, and FPS before deciding
-which processors to reuse. Do not assume six values imply compatible units.
-
-## Proposed files
-
-| File | Responsibility |
+| File | Purpose |
 | --- | --- |
-| `config/act/rig.example.yaml` | Wrist camera identity, FPS, joint order, measured calibration, teaching limits, task and local host settings; unmeasured values remain unset |
-| `config/act/train.yaml` | Pinned software and visual backbone weights, fresh ACT configuration, Homer dataset, batch size, learning rates, checkpoints and training budget |
-| `pi/wrist_camera.py` | Stable camera-device selection; timestamped RGB publication and stream diagnostics |
-| `pi/soarm_ros_bridge.py` (modify) | Timestamped higher-rate measured positions; explicit supported teaching lifecycle; bounded absolute-target path; preserve existing jog control and watchdog |
-| `pi/act_learning/representation.py` | Joint ordering and invertible tick/policy conversions; no guessed zeros or directions |
-| `pi/act_learning/record.py` | Start, stop, discard and label episodes; synchronise measured joints, images, gripper events and teaching status |
-| `pi/act_learning/export_dataset.py` | Convert raw demonstrations to the pinned LeRobot dataset format; construct future-position action labels and split whole episodes |
-| `pi/act_learning/check_dataset.py` | Detect missing joints, stale frames, timestamp gaps, invalid limits, inconsistent rates and unsuccessful episodes; produce inspection report |
-| `training/act/requirements.lock` | Reproducible tested training dependency set |
-| `training/act/kaggle_train.ipynb` | GPU check, installation, data staging, model adaptation, short benchmark, training and persistent checkpoint export |
-| `training/act/train.py` | Initialize fresh ACT with pretrained visual backbone; configure Homer schema and normalisation; start a fresh optimizer and save complete resumable checkpoints |
-| `pi/act_learning/run_policy.py` | CPU/laptop inference benchmark, default command-free preview, chunk handling and explicit guarded execution |
-| `pi/act_learning/evaluate.py` | Record initial position, outcome, failure reason, timing and model revision for each trial |
-| `pi/tests/test_act_representation.py` | Conversion round trips, gripper direction and joint ordering |
-| `pi/tests/test_act_dataset.py` | Action alignment, episode boundaries and rejection of stale/incomplete recordings |
-| `pi/tests/test_act_execution.py` | Absolute-target semantics, feedback freshness, stop conditions and chunk cancellation |
+| `pi/act_learning/record.py` | USB camera, joint readback, start/stop/discard and explicit teaching controls in one program |
+| `config/act/rig.example.yaml` | Camera device, 10 FPS, joint order, existing limits and tested gripper settings |
+| `pi/act_learning/export_dataset.py` | Check recordings, create future-position labels and export LeRobot episodes |
+| `training/act/kaggle_train.ipynb` | Pinned installation, fresh ACT setup, training and checkpoint download |
+| `pi/act_learning/run_policy.py` | Preview, CPU timing and bounded supervised execution |
 
-Update `.gitignore` for local rig configuration, recordings, datasets,
-downloaded weights, outputs and notebook execution artifacts. Secrets belong
-in notebook secrets or environment variables, never committed files.
+Reuse the existing SDK and controller limits. Add only checks that catch real
+failures: incomplete readback, frame/state alignment, episode-boundary labels,
+invalid targets and stopping. Ignore local recordings, configuration and weights
+in Git. Keep credentials in notebook secrets or environment variables.
 
-## Work order and acceptance gates
+## Essential conditions
 
-1. **Compatibility and inference smoke test.** The optional comparison
-   checkpoint has been tested; fresh ACT is now the training baseline. Pin a tested LeRobot
-   version and model revision. Inspect source action semantics. Load the full
-   checkpoint and perform command-free inference on sample RGB/state input
-   on the available laptop. Measure latency before choosing control FPS.
-2. **Teaching and sensors.** Verify camera mount and cables over the
-   intended motion. With the arm supported, verify torque management and
-   readback while guiding it. Teaching mode excludes all motion writers and
-   has an explicit supervised exit; it must not snap to a stale target on
-   re-enable. Prototype timestamped joint readback at 20–30 Hz, measure actual
-   throughput, and select a sustainable rate shared by recording and execution.
-   Follow `pi/AGENTS.md` for every ROS entrypoint. See the
-   [detailed step 2 plan](act-step-2-teaching-and-sensors.md).
-3. **Pilot data.** Record five complete successful episodes. Inspect
-   video/state alignment, future-position labels and gripper transitions.
-   Keep the guiding hand out of the wrist camera's view as far as practical;
-   assess contamination before collecting the full dataset. Manual measured
-   positions are not leader-command labels: document the future-offset label
-   construction and avoid zero-action same-frame targets.
-4. **Dataset.** Aim for 50 clean episodes distributed across five
-   nearby object positions. Reserve whole episodes and additional object
-   positions for validation and physical evaluation. Do not split neighbouring
-   frames randomly. Keep camera, tray, object orientation and start pose fixed.
-5. **Cloud training.** Use one Kaggle GPU, initial batch size 8,
-   reducing if necessary. Start with a 200-step smoke run and reload its saved
-   checkpoint. Measure throughput and checkpoint size; choose the subsequent
-   step budget from available quota. Use local runtime disk for training data
-   and persistent storage for weights plus optimizer/RNG/step state. Rebuild
-   Homer state/action statistics explicitly; verify preprocessing numerically.
-6. **Guarded evaluation.** Convert predicted absolute joint targets
-   correctly; the existing delta topic accumulates relative to prior targets,
-   so it cannot be treated as a direct absolute-position interface. Recheck
-   every action against measured feedback and limits, reject stale inputs,
-   cancel queued actions on stop, and retain the hardware watchdog. Joint
-   bounds do not prove collision-free paths. Report publication separately
-   from observed movement and successful grasping.
-7. **Corrections and freeze.** Score at least 20 supervised trials at
-   withheld positions. Add successful corrective demonstrations for observed
-   failures, retrain and re-evaluate, then freeze camera, rig and checkpoint.
-   Report the measured success rate; 18/20 is a target, not an established
-   result or a statistical reliability guarantee.
+Only one process owns the servo bus. Other controllers and automatic watchdog
+writes must be inactive while physically guiding the supported arm. Restore
+torque only through a verified procedure that cannot move toward stale targets.
+Keep the stop path during policy execution. A disconnected camera or failed
+joint read invalidates a recording; old values must not be reused as new data.
 
-## Step 1 implementation status
+Raw ticks avoid a new coordinate-calibration layer. Preserve the joint order:
+shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper. Keep
+this order and representation identical between training and execution.
 
-The command-free checkpoint loader and CPU benchmark are implemented in
-`training/act/smoke_test.py`, with pinned model revision and tested CPU
-dependencies. See `training/act/README.md` for commands and the saved report.
-Strict loading of the complete model and saved processors passed; output was
-finite with shape `[1, 100, 6]`. Median latency was 387 ms and p95 478 ms on
-the local laptop with four CPU threads. Control FPS remains unset pending
-sensor throughput and guarded-execution measurements.
+No custom ROS topics, standalone camera publisher, generalized teaching state
+machine, diagnostic dashboard or multi-rate benchmark is required initially.
+The recorder can access the SDK directly after the existing bridge is stopped.
+If an implementation uses ROS, follow `pi/AGENTS.md`.
 
-The public datasets named in the card confirm joint order and 30 FPS. The
-training config names a different `_v2` dataset whose metadata returns HTTP
-401 without authentication. Exact source units and gripper calibration remain
-unverified; transfer compatibility is not established by the software test.
+The current hardware work is `REQUIRES_HARDWARE_TEST`. Step 1's saved report is
+software evidence, not proof of grasp performance. Free cloud allocation depends
+on account availability. Recording at 10 FPS does not imply fresh CPU predictions
+at 10 FPS; chunk execution and feedback delay must be tested in step 5.
 
-## Blocking facts to resolve first
-
-- Safe supported hand guidance, gripper teaching and servo readback have not
-  been physically verified.
-- Wrist-camera identity, mounting, visibility and cable clearance are unknown.
-- Homer policy coordinates and gripper calibration need a documented mapping.
-  Source-to-Homer calibration matters only for the optional comparison.
-- Sustainable recording FPS is unmeasured. The comparison checkpoint CPU
-  latency is measured; the final trained configuration must be benchmarked.
-- Free GPU allocation and quota depend on the user's account and availability.
-
-No new boot service, firmware change, base navigation, multi-object selection,
-or wrist-camera purchase is required by this plan. Start with one object;
-expand only after measured success.
-
-## Sources
-
-- [Source model](https://huggingface.co/TakuyaHiraoka/act_so101_pick_diverse_objects)
-- [Source configuration](https://huggingface.co/TakuyaHiraoka/act_so101_pick_diverse_objects/blob/main/config.json)
-- [ACT documentation](https://huggingface.co/docs/lerobot/act)
-- [Kaggle GPU guidance](https://www.kaggle.com/docs/efficient-gpu-usage)
-- [Colab limitations](https://research.google.com/colaboratory/faq.html)
+References: [official ACT code and example](https://github.com/huggingface/lerobot/tree/v0.4.4/src/lerobot/policies/act),
+[existing software check](../training/act/README.md).
