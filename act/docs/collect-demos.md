@@ -45,7 +45,9 @@ cd ~/mobile-robot
 bash act/scripts/start-demos.sh
 ```
 
-Keys work in the terminal:
+Keys work immediately in the terminal, without Enter. Typed letters are hidden.
+Pressing `s` prints `RECORDING STARTED` and the folder path; while recording,
+the terminal prints the saved sample count once per second.
 
 - `s`: start a new demo; guide approach, grip, lift, place and release.
 - `f`: save a successful demo. Reset the object, then press `s` again.

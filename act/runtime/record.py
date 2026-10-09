@@ -191,7 +191,8 @@ def main():
             return
         if any(torque):
             raise RuntimeError('All six joints must be in verified manual torque-off guidance mode')
-        print('s=start, f=finish successful episode, d=discard, q=quit. No torque restoration on exit.', flush=True)
+        print('READY — press s to start. Keys act immediately; no Enter needed and key echo is off.\n'
+              's=start, f=finish successful episode, d=discard, q=quit. No torque restoration on exit.', flush=True)
         if args.no_preview:
             if not sys.stdin.isatty():
                 raise RuntimeError('Use an interactive terminal: ssh -t pi')
@@ -210,6 +211,8 @@ def main():
             ticks, read_start, read_end = read_positions(packet, cfg)
             if episode:
                 episode.append(frame, ticks, capture_start, capture_end, read_start, read_end)
+                if args.no_preview and episode.count % max(1, round(cfg['fps'])) == 0:
+                    print(f'RECORDING: {episode.count} samples saved', flush=True)
             cv2.putText(frame, 'RECORDING' if episode else 's:start f:finish d:discard q:quit',
                         (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
             if args.no_preview:
@@ -219,9 +222,15 @@ def main():
                 key = cv2.waitKey(1) & 255
             if key == ord('s') and episode is None:
                 episode = Episode(ROOT / 'data' / f'episode-{time.time_ns()}', cfg)
+                print(f'RECORDING STARTED: {episode.directory}', flush=True)
+            elif key == ord('s'):
+                print('Already recording. Press f to save or d to discard.', flush=True)
             elif key in (ord('f'), ord('d')) and episode:
                 episode.finish('success' if key == ord('f') and episode.count > 1 else 'discard')
                 episode = None
+                print('READY — press s for the next episode.', flush=True)
+            elif key in (ord('f'), ord('d')):
+                print('No episode recording. Press s to start.', flush=True)
             elif key == ord('q'):
                 break
             deadline += period
