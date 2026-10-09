@@ -8,3 +8,8 @@ __pycache__/
 data/reachability/
 captures/
 experiment-archives/
+
+# ACT local environments, weights and benchmark artifacts
+.venv-act/
+data/act/
+outputs/act/

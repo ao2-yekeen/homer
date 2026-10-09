@@ -1,0 +1,67 @@
+{
+  "source": {
+    "repo_id": "TakuyaHiraoka/act_so101_pick_diverse_objects",
+    "revision": "4cbf28905b71f874a9e10123b01099c0e758bfcf",
+    "lerobot_version": "0.4.4",
+    "files": [
+      "config.json",
+      "model.safetensors",
+      "policy_preprocessor.json",
+      "policy_preprocessor_step_3_normalizer_processor.safetensors",
+      "policy_postprocessor.json",
+      "policy_postprocessor_step_0_unnormalizer_processor.safetensors",
+      "train_config.json",
+      "README.md"
+    ]
+  },
+  "sha256": {
+    "config.json": "1b47749a538553f73ca529e62f1e7a8ef6e0c1f0f3f1580bd44c7b156d105efa",
+    "model.safetensors": "afe077d05ab6f794d5cef0d1535a0e2ea9eb67d0d761a237be07764798c600e1",
+    "policy_preprocessor.json": "07ca6943c04ae1a10d8e2148b6f2c85f1a2b542b5c6cc4d435665911a5672dcb",
+    "policy_preprocessor_step_3_normalizer_processor.safetensors": "0d9412cf50a9e037e82b6603c222395a703e96f5be07fc749698de3b02611ff9",
+    "policy_postprocessor.json": "648b415125a183dfd6cbc47c1dc04ab3f2d912654ef22a12ca5e8b93d7d85cdd",
+    "policy_postprocessor_step_0_unnormalizer_processor.safetensors": "0d9412cf50a9e037e82b6603c222395a703e96f5be07fc749698de3b02611ff9",
+    "train_config.json": "5ddf8f9598078122ef0cc385361c4108d7e667e7885aa400780f5b1e036d4116",
+    "README.md": "ab5a5714b0895bd1c7817642ae1d922f563b31fb9be583f96ea84c289d60d30b"
+  },
+  "software": {
+    "lerobot": "0.4.4",
+    "torch": "2.7.1+cpu",
+    "torchvision": "0.22.1+cpu"
+  },
+  "host": {
+    "platform": "Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.35",
+    "python": "3.10.12",
+    "threads": 4
+  },
+  "input": {
+    "image": "synthetic constant RGB",
+    "state": "source normalization mean"
+  },
+  "output_shape": [
+    1,
+    100,
+    6
+  ],
+  "all_finite": true,
+  "latency_ms": {
+    "median": 386.547553499895,
+    "p95": 478.15643005010315,
+    "samples": [
+      480.67986400019436,
+      417.08117199959815,
+      368.2541520001905,
+      397.61907599950064,
+      375.47603100028937,
+      333.00375700036966,
+      451.7072759999792,
+      475.0722329999917,
+      363.29885899976944,
+      348.19489199981035
+    ]
+  },
+  "fresh_chunk_hz_at_p95": 2.0913657898424916,
+  "control_fps": null,
+  "action_semantics": "PARTIAL: public card datasets confirm joint order and 30 FPS; train_config v2 metadata unavailable; units/gripper calibration unverified",
+  "limitations": "Command-free CPU smoke test. Synthetic inputs do not measure grasp quality. Control FPS requires sensor and executor measurements; chunk length is not permission to execute open-loop."
+}

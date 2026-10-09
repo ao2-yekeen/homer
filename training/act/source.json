@@ -1,0 +1,6 @@
+{
+  "repo_id": "TakuyaHiraoka/act_so101_pick_diverse_objects",
+  "revision": "4cbf28905b71f874a9e10123b01099c0e758bfcf",
+  "lerobot_version": "0.4.4",
+  "files": ["config.json", "model.safetensors", "policy_preprocessor.json", "policy_preprocessor_step_3_normalizer_processor.safetensors", "policy_postprocessor.json", "policy_postprocessor_step_0_unnormalizer_processor.safetensors", "train_config.json", "README.md"]
+}
