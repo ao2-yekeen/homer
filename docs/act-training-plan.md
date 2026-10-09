@@ -2,17 +2,21 @@
 
 ## Objective
 
-Fine-tune `TakuyaHiraoka/act_so101_pick_diverse_objects` on hand-guided
-demonstrations from Homer's vertically mounted SO-101. Demonstrate a learned
+Train a fresh ACT policy using the official LeRobot implementation and an
+ImageNet-pretrained ResNet-18 visual backbone on hand-guided demonstrations
+from Homer's vertically mounted SO-101. Demonstrate a learned
 pick-and-place policy with the base stationary, one foam block, a small raised
 platform region, and a fixed destination tray. No leader arm or gamepad
 demonstrations. Train on Kaggle's free GPU, with Colab as backup.
 
-This is an implementation plan, not a validated hardware capability. Transfer
-may help convergence but must be measured. Freeze the setup after evaluation
-and corrective training.
+Use the USB wrist camera, separate from the Logitech camera. Initialize the
+action policy freshly and compute normalization statistics from Homer data.
+The community checkpoint is retained only as an optional comparison.
 
-## Verified source checkpoint
+This is an implementation plan, not a validated hardware capability. Freeze
+the setup after evaluation and corrective training.
+
+## Optional comparison checkpoint (not the training baseline)
 
 The published checkpoint has one `observation.images.wrist` RGB input with
 shape `[3, 480, 640]`, `observation.state` shape `[6]`, and `action` shape `[6]`.
@@ -40,7 +44,7 @@ which processors to reuse. Do not assume six values imply compatible units.
 | File | Responsibility |
 | --- | --- |
 | `config/act/rig.example.yaml` | Wrist camera identity, FPS, joint order, measured calibration, teaching limits, task and local host settings; unmeasured values remain unset |
-| `config/act/finetune.yaml` | Pinned source model and software versions, Homer dataset, batch size, learning rates, checkpoints and training budget |
+| `config/act/train.yaml` | Pinned software and visual backbone weights, fresh ACT configuration, Homer dataset, batch size, learning rates, checkpoints and training budget |
 | `pi/wrist_camera.py` | Stable camera-device selection; timestamped RGB publication and stream diagnostics |
 | `pi/soarm_ros_bridge.py` (modify) | Timestamped higher-rate measured positions; explicit supported teaching lifecycle; bounded absolute-target path; preserve existing jog control and watchdog |
 | `pi/act_learning/representation.py` | Joint ordering and invertible tick/policy conversions; no guessed zeros or directions |
@@ -48,8 +52,8 @@ which processors to reuse. Do not assume six values imply compatible units.
 | `pi/act_learning/export_dataset.py` | Convert raw demonstrations to the pinned LeRobot dataset format; construct future-position action labels and split whole episodes |
 | `pi/act_learning/check_dataset.py` | Detect missing joints, stale frames, timestamp gaps, invalid limits, inconsistent rates and unsuccessful episodes; produce inspection report |
 | `training/act/requirements.lock` | Reproducible tested training dependency set |
-| `training/act/kaggle_finetune.ipynb` | GPU check, installation, data staging, model adaptation, short benchmark, training and persistent checkpoint export |
-| `training/act/finetune.py` | Load source weights; explicitly configure Homer schema and normalisation; start a fresh optimizer and save complete resumable checkpoints |
+| `training/act/kaggle_train.ipynb` | GPU check, installation, data staging, model adaptation, short benchmark, training and persistent checkpoint export |
+| `training/act/train.py` | Initialize fresh ACT with pretrained visual backbone; configure Homer schema and normalisation; start a fresh optimizer and save complete resumable checkpoints |
 | `pi/act_learning/run_policy.py` | CPU/laptop inference benchmark, default command-free preview, chunk handling and explicit guarded execution |
 | `pi/act_learning/evaluate.py` | Record initial position, outcome, failure reason, timing and model revision for each trial |
 | `pi/tests/test_act_representation.py` | Conversion round trips, gripper direction and joint ordering |
@@ -62,7 +66,8 @@ in notebook secrets or environment variables, never committed files.
 
 ## Work order and acceptance gates
 
-1. **Compatibility and inference smoke test.** Pin a tested LeRobot
+1. **Compatibility and inference smoke test.** The optional comparison
+   checkpoint has been tested; fresh ACT is now the training baseline. Pin a tested LeRobot
    version and model revision. Inspect source action semantics. Load the full
    checkpoint and perform command-free inference on sample RGB/state input
    on the available laptop. Measure latency before choosing control FPS.
@@ -72,7 +77,8 @@ in notebook secrets or environment variables, never committed files.
    has an explicit supervised exit; it must not snap to a stale target on
    re-enable. Prototype timestamped joint readback at 20–30 Hz, measure actual
    throughput, and select a sustainable rate shared by recording and execution.
-   Follow `pi/AGENTS.md` for every ROS entrypoint.
+   Follow `pi/AGENTS.md` for every ROS entrypoint. See the
+   [detailed step 2 plan](act-step-2-teaching-and-sensors.md).
 3. **Pilot data.** Record five complete successful episodes. Inspect
    video/state alignment, future-position labels and gripper transitions.
    Keep the guiding hand out of the wrist camera's view as far as practical;
@@ -122,8 +128,10 @@ unverified; transfer compatibility is not established by the software test.
 - Safe supported hand guidance, gripper teaching and servo readback have not
   been physically verified.
 - Wrist-camera identity, mounting, visibility and cable clearance are unknown.
-- Source-to-Homer action units and calibration are not yet audited.
-- Sustainable recording FPS and local ACT inference latency are unmeasured.
+- Homer policy coordinates and gripper calibration need a documented mapping.
+  Source-to-Homer calibration matters only for the optional comparison.
+- Sustainable recording FPS is unmeasured. The comparison checkpoint CPU
+  latency is measured; the final trained configuration must be benchmarked.
 - Free GPU allocation and quota depend on the user's account and availability.
 
 No new boot service, firmware change, base navigation, multi-object selection,
