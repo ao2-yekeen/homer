@@ -5,6 +5,8 @@ ResNet-18 visual backbone. Use the USB wrist camera and hand-guided demonstratio
 from Homer's vertically mounted SO-101. Start with one easy foam block, a fixed
 tray and the established raised platform, with the base stationary.
 
+For demos, the task outcome is successful grasp; safety is not a scored property.
+
 ## Steps
 
 1. **Set up ACT.** Use the tested LeRobot version and CPU environment. The
@@ -28,8 +30,8 @@ tray and the established raised platform, with the base stationary.
    with batch size 8 and a 200-step smoke run; reload its checkpoint, then train
    within available compute. Save weights and resumable training state.
 5. **Try the trained policy.** Preview predicted targets without motion first
-   and benchmark the trained configuration. Then test slowly under supervision,
-   using existing joint limits, fresh feedback and an immediate stop. ACT predicts
+   and benchmark the trained configuration. Then test under supervision with
+   fresh feedback and an immediate stop. ACT predicts
    absolute target ticks; the existing accumulated-delta topic cannot be used
    as an absolute interface. Add a small bounded target adapter when implementing
    this step. Use short chunks and replan; measure timing before selecting the
@@ -44,15 +46,15 @@ tray and the established raised platform, with the base stationary.
 | File | Purpose |
 | --- | --- |
 | `act/runtime/record.py` | USB camera, joint readback, start/stop/discard and explicit teaching controls in one program |
-| `act/config/rig.example.yaml` | Camera device, 10 FPS, joint order, existing limits and tested gripper settings |
+| `act/config/rig.example.yaml` | Camera device, 10 FPS, joint order and servo tick range |
 | `act/runtime/export_dataset.py` | Check recordings, create future-position labels and export LeRobot episodes |
 | `act/training/kaggle_train.ipynb` | Pinned installation, fresh ACT setup, training and checkpoint download |
 | `act/runtime/run_policy.py` | Preview, CPU timing and bounded supervised execution |
 
-Reuse the existing SDK and controller limits. Add only checks that catch real
+Use the existing SDK and full servo tick range. Add only checks that catch real
 failures: incomplete readback, frame/state alignment, episode-boundary labels,
-invalid targets and stopping. Ignore local recordings, configuration and weights
-in Git. Keep credentials in notebook secrets or environment variables.
+invalid register values and stopping. Ignore local recordings, configuration and
+weights in Git. Keep credentials in notebook secrets or environment variables.
 
 ## Essential conditions
 
