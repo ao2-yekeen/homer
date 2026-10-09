@@ -25,3 +25,16 @@ were specific to another task. Existing shared motion-controller limits were
 not changed. There is no configuration approval flag; torque-off is checked
 before starting. Manual guidance, wrist visibility and successful physical
 pick-and-place remain operator checks before collecting training demos.
+
+Session start-pose return smoke test on 2026-10-10:
+
+- Read and saved the live reference pose `[2264, 150, 3029, 1446, 3884, 2032]`;
+  all six servos reported torque off.
+- Pi return-control tests passed, including small-step movement, cancellation,
+  write failure and verified torque release.
+- Live Pi recorder returned while already at the saved pose, released torque,
+  and captured 58 samples at 10.11 FPS with both camera images per sample. The
+  episode was discarded. A final read showed `[2264, 151, 3029, 1446, 3884,
+  2032]`, torque off on all joints, within the 30-tick start tolerance.
+- Since the arm was already at the reference pose, this live run verified the
+  return setup and handoff but did not exercise travel from a different pose.

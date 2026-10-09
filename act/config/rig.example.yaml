@@ -1,6 +1,11 @@
 camera: /dev/v4l/by-id/usb-Generic_USB_Camera_200901010001-video-index0
 width: 640
 height: 480
+# Required fixed Logitech C930e overview view.
+overview_camera:
+  device: /dev/v4l/by-id/usb-046d_Logitech_Webcam_C930e-video-index0
+  width: 640
+  height: 480
 fps: 10
 serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B91029201-if00
 baud: 1000000

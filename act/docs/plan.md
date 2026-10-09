@@ -1,9 +1,11 @@
 # Simple ACT training plan
 
 Train a fresh ACT policy with official LeRobot code and an ImageNet-pretrained
-ResNet-18 visual backbone. Use the USB wrist camera and hand-guided demonstrations
-from Homer's vertically mounted SO-101. Start with one easy foam block, a fixed
-tray and the established raised platform, with the base stationary.
+ResNet-18 visual backbone. Use the USB wrist camera, the fixed Logitech C930e
+overview camera, and hand-guided demonstrations from Homer's
+vertically mounted SO-101. Add ToF depth as an observation after recording and
+timestamp alignment are implemented and checked. Start with one easy foam
+block, a fixed tray and the established raised platform, with the base stationary.
 
 For demos, the task outcome is successful grasp; safety is not a scored property.
 
@@ -20,9 +22,12 @@ For demos, the task outcome is successful grasp; safety is not a scored property
    [step 2 instructions](step-2.md).
 3. **Collect demonstrations.** Record five successful episodes and inspect them.
    Then aim for about 50 clean demonstrations across five nearby object positions.
-   Keep the camera, tray and start pose consistent. Discard failed or incomplete
-   episodes. Keep a few whole episodes aside for validation; never randomly
-   split neighboring frames.
+   Keep both camera positions, tray and ready pose consistent; capture one
+   measured session start pose, return to it before every episode, and attach it
+   to the episode metadata. Vary object
+   positions first; add deliberate ready-pose variation only after the baseline
+   works. Discard failed or incomplete episodes. Keep a few whole episodes aside
+   for validation; never randomly split neighboring frames.
 4. **Prepare and train.** Export to the pinned LeRobot format. State is measured
    ticks; actions are future measured positions, with an explicit tested offset
    and no crossing of episode boundaries. Compute mean/std statistics from the

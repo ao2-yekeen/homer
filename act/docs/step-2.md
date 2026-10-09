@@ -1,16 +1,19 @@
 # Step 2: get hand-guided recording working
 
-Use the USB wrist camera and one simple Pi recorder. Save raw joint ticks;
-train a fresh ACT policy later using official LeRobot code and its pretrained
-visual backbone. Hardware checks are `REQUIRES_HARDWARE_TEST`.
+Use the generic USB wrist camera plus the fixed Logitech C930e overview camera.
+Save raw joint ticks and both RGB views; train a fresh
+ACT policy later using official LeRobot code and its pretrained visual backbone.
+Hardware checks are `REQUIRES_HARDWARE_TEST`.
 
 ## 1. Check the USB wrist camera
 
-Find its actual capture device and use a stable USB device path when available.
-Start with 640×480 and a recording rate of 10 FPS if supported. Preview the
-object and gripper through the intended pick-and-place path. Check that the
-USB cable moves freely and your guiding hand does not hide the task. This is
-separate from the Logitech camera.
+Find the wrist camera's actual capture device and use a stable USB device path
+when available. The recorder requires the Logitech C930e as the second,
+overview view. Start with 640×480 and a recording rate of 10 FPS if supported.
+Preview both views through the intended pick-and-place path: the wrist camera
+should show the object and gripper, while the Logitech should show the whole
+work area. Check that the wrist cable moves freely and your guiding hand does
+not hide the task.
 
 Done when: a clear, usable wrist view is available throughout the motion.
 
@@ -30,12 +33,11 @@ If manual gripper guidance is impractical, add simple open/close keyboard
 controls for the gripper alone, using tested endpoints and slow motion. Keep
 arm-joint writes blocked and hands clear of the powered gripper.
 
-Before collecting demonstrations, test a supervised exit from guidance that
-cannot move toward old targets. Verify whether current-position goals can be
-staged before torque is restored. If that behavior is unsupported, establish
-another tested manual exit procedure; do not assume that restarting the bridge
-or cycling power clears old servo goals. On failure, keep the arm supported;
-do not automatically restore torque in an exception handler.
+Before collecting demonstrations, test the return from the current pose to the
+saved session pose in a clear work area. Confirm that current-position goals are
+staged before torque is enabled, the return uses small steps, torque is verified
+off before guidance, and `q` or `x` aborts the return. On failure, keep the arm
+supported and verify torque is off before resuming.
 
 Done when: you can guide the arm, demonstrate gripper opening/closing, read
 all joints and exit guidance without a stale-target movement.
@@ -52,7 +54,7 @@ Provide start, stop and discard keys, plus explicit teaching entry/exit controls
 or instructions for the tested manual procedure. Start at 10 FPS. Each episode
 saves:
 
-- Wrist RGB images and their capture timestamps.
+- Wrist and Logitech overview RGB images with their capture timestamps.
 - Six measured raw tick positions and read-start/read-end timestamps.
 - Joint order, camera settings, actual sample rate and success/discard label.
 - Gripper command events if keyboard gripper control is used.

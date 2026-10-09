@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""USB wrist-camera / six-servo demonstration recorder. No automatic motion."""
+"""Record hand-guided demos after returning the arm to its session start pose."""
 import argparse
 import fcntl
 import json
@@ -16,6 +16,11 @@ import cv2
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+RETURN_MAX_STEP_TICKS = 20
+RETURN_STEP_INTERVAL_S = 0.05
+RETURN_SETTLE_TOLERANCE_TICKS = 12
+START_RECORD_TOLERANCE_TICKS = 30
+RETURN_SETTLE_TIMEOUT_S = 20
 
 
 def checked(result):
@@ -33,6 +38,95 @@ def read_positions(packet, cfg):
     if any(not 0 <= value <= 4095 for value in values):
         raise RuntimeError(f'Invalid raw servo tick reading: {values}')
     return values, start, end
+
+
+def get_session_start_pose(path, cfg, live_ticks, live_timestamp_ns):
+    if path.exists():
+        saved = json.loads(path.read_text())
+        if saved.get('joint_names') != cfg['joint_names']:
+            raise RuntimeError('Saved start pose joint order does not match this rig')
+        ticks = saved.get('state_ticks')
+        if (not isinstance(ticks, list) or len(ticks) != len(cfg['servo_ids'])
+                or any(not isinstance(v, int) or not 0 <= v <= 4095 for v in ticks)):
+            raise RuntimeError('Saved start pose has invalid servo ticks')
+        return ticks, None
+    saved = dict(state_ticks=live_ticks, joint_names=cfg['joint_names'])
+    path.write_text(json.dumps(saved, indent=2) + '\n')
+    return live_ticks, live_timestamp_ns
+
+
+def set_torque(packet, torque_register, servo_ids, enabled):
+    value = 1 if enabled else 0
+    errors = []
+    for servo_id in servo_ids:
+        try:
+            checked(packet.write1ByteTxRx(servo_id, torque_register, value))
+        except Exception as exc:
+            errors.append(f'{servo_id}: {exc}')
+    if errors:
+        mode = 'enable' if enabled else 'disable'
+        raise RuntimeError(f'Could not {mode} torque on servos: ' + '; '.join(errors))
+    expected = 1 if enabled else 0
+    for servo_id in servo_ids:
+        actual = checked(packet.read1ByteTxRx(servo_id, torque_register))[0]
+        if actual != expected:
+            raise RuntimeError(
+                f'Torque state verification failed for servo {servo_id}: '
+                f'expected {expected}, got {actual}')
+
+
+def return_to_pose(packet, torque_register, cfg, target_ticks, poll_key):
+    """Return slowly to the saved pose, then always release torque for guidance."""
+    servo_ids = cfg['servo_ids']
+    current, _, _ = read_positions(packet, cfg)
+    if len(target_ticks) != len(servo_ids) or any(not 0 <= v <= 4095 for v in target_ticks):
+        raise RuntimeError('Saved start pose is invalid')
+
+    torque_enabled = False
+    cancel_key = -1
+    try:
+        # Replace any stale goals before enabling torque so the arm initially
+        # holds where it is now rather than jumping to an older servo goal.
+        for servo_id, position in zip(servo_ids, current):
+            checked(packet.WritePosEx(servo_id, position, 25, 5))
+        torque_enabled = True
+        set_torque(packet, torque_register, servo_ids, True)
+
+        max_delta = max(abs(dst - src) for src, dst in zip(current, target_ticks))
+        steps = max(1, (max_delta + RETURN_MAX_STEP_TICKS - 1) // RETURN_MAX_STEP_TICKS)
+        last_report = time.monotonic()
+        for step in range(1, steps + 1):
+            key = poll_key()
+            if key in (ord('q'), ord('x')):
+                cancel_key = key
+                break
+            targets = [round(src + (dst - src) * step / steps)
+                       for src, dst in zip(current, target_ticks)]
+            for servo_id, target in zip(servo_ids, targets):
+                checked(packet.WritePosEx(servo_id, target, 25, 5))
+            if time.monotonic() - last_report >= 1:
+                print(f'RETURNING TO START: step {step}/{steps}', flush=True)
+                last_report = time.monotonic()
+            time.sleep(RETURN_STEP_INTERVAL_S)
+
+        if cancel_key == -1:
+            deadline = time.monotonic() + RETURN_SETTLE_TIMEOUT_S
+            while time.monotonic() < deadline:
+                key = poll_key()
+                if key in (ord('q'), ord('x')):
+                    cancel_key = key
+                    break
+                measured, _, _ = read_positions(packet, cfg)
+                if all(abs(actual - target) <= RETURN_SETTLE_TOLERANCE_TICKS
+                       for actual, target in zip(measured, target_ticks)):
+                    break
+                time.sleep(RETURN_STEP_INTERVAL_S)
+            else:
+                raise RuntimeError(f'Arm did not reach saved start pose: target={target_ticks}')
+        return cancel_key
+    finally:
+        if torque_enabled:
+            set_torque(packet, torque_register, servo_ids, False)
 
 
 def open_arm(cfg):
@@ -64,21 +158,34 @@ def open_arm(cfg):
 
 
 class Episode:
-    def __init__(self, directory, cfg):
+    def __init__(self, directory, cfg, start_state_ticks, start_state_ns,
+                 recording_start_ticks, return_completed_ns):
         self.directory = directory
         directory.mkdir(parents=True)
         self.stream = (directory / 'samples.jsonl').open('w')
         self.cfg = cfg
+        self.start_state_ticks = start_state_ticks
+        self.start_state_ns = start_state_ns
+        self.recording_start_ticks = recording_start_ticks
+        self.return_completed_ns = return_completed_ns
         self.times = []
         self.count = 0
 
-    def append(self, frame, ticks, capture_start, capture_end, read_start, read_end):
+    def append(self, frame, overview_frame, ticks, capture_start, capture_end,
+               overview_start, overview_end, read_start, read_end):
         name = f'{self.count:06d}.jpg'
         # OpenCV encodes BGR as ordinary RGB JPEG; consumers decode to RGB once.
         if not cv2.imwrite(str(self.directory / name), frame):
             raise RuntimeError('Image write failed')
         row = dict(image=name, state_ticks=ticks, capture_start_ns=capture_start,
-                   capture_end_ns=capture_end, read_start_ns=read_start, read_end_ns=read_end)
+                   capture_end_ns=capture_end, read_start_ns=read_start,
+                   read_end_ns=read_end)
+        overview_name = f'{self.count:06d}-overview.jpg'
+        if not cv2.imwrite(str(self.directory / overview_name), overview_frame):
+            raise RuntimeError('Overview image write failed')
+        row.update(overview_image=overview_name,
+                   overview_capture_start_ns=overview_start,
+                   overview_capture_end_ns=overview_end)
         self.stream.write(json.dumps(row) + '\n')
         self.stream.flush()
         self.times.append(capture_end)
@@ -90,6 +197,10 @@ class Episode:
                 if self.count > 1 else None)
         metadata = dict(outcome=outcome, reason=reason, samples=self.count,
                         actual_fps=rate, clock='Pi monotonic_ns', config=self.cfg,
+                        start_state_ticks=self.start_state_ticks,
+                        start_state_timestamp_ns=self.start_state_ns,
+                        recording_start_ticks=self.recording_start_ticks,
+                        return_completed_ns=self.return_completed_ns,
                         image_encoding='JPEG RGB; OpenCV input BGR',
                         capture_timestamp='Host read interval, not sensor exposure time')
         (self.directory / 'metadata.json').write_text(json.dumps(metadata, indent=2))
@@ -103,8 +214,10 @@ def review(directory):
     if len(rows) < 2:
         raise RuntimeError('Need at least two samples for review')
     cfg = metadata['config']
+    overview_cfg = cfg['overview_camera']
+    review_width = cfg['width'] * 2
     writer = cv2.VideoWriter(str(directory / 'review.avi'), cv2.VideoWriter_fourcc(*'MJPG'),
-                             metadata['actual_fps'], (cfg['width'], cfg['height']))
+                             metadata['actual_fps'], (review_width, cfg['height']))
     if not writer.isOpened():
         raise RuntimeError('Cannot create review video')
     try:
@@ -112,6 +225,11 @@ def review(directory):
             frame = cv2.imread(str(directory / row['image']))
             if frame is None:
                 raise RuntimeError('Missing episode image')
+            overview = cv2.imread(str(directory / row['overview_image']))
+            if overview is None:
+                raise RuntimeError('Missing episode overview image')
+            overview = cv2.resize(overview, (cfg['width'], cfg['height']))
+            frame = cv2.hconcat([frame, overview])
             cv2.putText(frame, str(row['state_ticks']), (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 255, 0), 1)
             writer.write(frame)
@@ -145,12 +263,17 @@ def main():
         review(args.review)
         return
     cfg = yaml.safe_load(args.config.read_text())
+    if 'overview_camera' not in cfg:
+        raise RuntimeError('Configuration must include the Logitech overview_camera')
     if cfg['servo_ids'] != list(range(1, 7)) or len(cfg['joint_names']) != 6:
         raise RuntimeError('Expected six ordered servos 1..6')
     if not 0 < cfg['fps'] <= 30:
         raise RuntimeError('FPS must be >0 and <=30')
     (ROOT / 'data').mkdir(exist_ok=True)
+    session_start_pose = None
+    session_start_pose_ns = None
     cap = None
+    overview_cap = None
     port = None
     lock = None
     episode = None
@@ -171,6 +294,21 @@ def main():
                     raise RuntimeError('Wrist camera read failed')
             if frame.shape[:2] != (cfg['height'], cfg['width']):
                 raise RuntimeError(f'Unexpected camera resolution: {frame.shape}')
+            overview_cfg = cfg['overview_camera']
+            overview_cap = cv2.VideoCapture(overview_cfg['device'], cv2.CAP_V4L2)
+            overview_cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
+            overview_cap.set(cv2.CAP_PROP_FRAME_WIDTH, overview_cfg['width'])
+            overview_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, overview_cfg['height'])
+            overview_cap.set(cv2.CAP_PROP_FPS, cfg['fps'])
+            overview_cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            if not overview_cap.isOpened():
+                raise RuntimeError('Cannot open configured Logitech overview camera')
+            for _ in range(5):
+                overview_ok, overview_frame = overview_cap.read()
+                if not overview_ok:
+                    raise RuntimeError('Logitech overview camera read failed')
+            if overview_frame.shape[:2] != (overview_cfg['height'], overview_cfg['width']):
+                raise RuntimeError(f'Unexpected overview camera resolution: {overview_frame.shape}')
             if args.camera_check:
                 started = time.monotonic()
                 for _ in range(20):
@@ -181,18 +319,27 @@ def main():
                 path = ROOT / 'data/camera-check.jpg'
                 if not cv2.imwrite(str(path), frame):
                     raise RuntimeError('Camera image save failed')
-                print(f'Saved {path}; reported camera FPS={cap.get(cv2.CAP_PROP_FPS)}; measured={measured:.2f} FPS')
+                message = f'Saved {path}; reported camera FPS={cap.get(cv2.CAP_PROP_FPS)}; measured={measured:.2f} FPS'
+                overview_path = ROOT / 'data/camera-check-overview.jpg'
+                if not cv2.imwrite(str(overview_path), overview_frame):
+                    raise RuntimeError('Overview camera image save failed')
+                message += f'; saved {overview_path}'
+                print(message)
                 return
         port, packet, torque_register, lock = open_arm(cfg)
-        positions, _, _ = read_positions(packet, cfg)
+        positions, _, position_read_end = read_positions(packet, cfg)
         torque = [checked(packet.read1ByteTxRx(i, torque_register))[0] for i in cfg['servo_ids']]
         print(f'Positions: {positions}; torque: {torque}', flush=True)
         if args.check:
             return
         if any(torque):
             raise RuntimeError('All six joints must be in verified manual torque-off guidance mode')
-        print('READY — press s to start. Keys act immediately; no Enter needed and key echo is off.\n'
-              's=start, f=finish successful episode, d=discard, q=quit. No torque restoration on exit.', flush=True)
+        session_start_pose, session_start_pose_ns = get_session_start_pose(
+            ROOT / 'data' / 'session-start-pose.json', cfg, positions,
+            position_read_end)
+        print(f'Session start pose loaded: {session_start_pose}', flush=True)
+        print('READY — press s to return to the saved pose, release torque, and start a demo.\n'
+              's=start, f=finish successful episode, d=discard, q=quit; q or x stops a return.', flush=True)
         if args.no_preview:
             if not sys.stdin.isatty():
                 raise RuntimeError('Use an interactive terminal: ssh -t pi')
@@ -208,20 +355,76 @@ def main():
                 raise RuntimeError('Camera disconnected/read failed')
             if capture_end - capture_start > 200_000_000:
                 raise RuntimeError('Camera read took over 200 ms')
+            overview_start = time.monotonic_ns()
+            overview_ok, overview_frame = overview_cap.read()
+            overview_end = time.monotonic_ns()
+            if not overview_ok:
+                raise RuntimeError('Logitech overview camera disconnected/read failed')
+            if overview_end - overview_start > 200_000_000:
+                raise RuntimeError('Logitech overview camera read took over 200 ms')
             ticks, read_start, read_end = read_positions(packet, cfg)
             if episode:
-                episode.append(frame, ticks, capture_start, capture_end, read_start, read_end)
+                episode.append(frame, overview_frame, ticks, capture_start,
+                               capture_end, overview_start, overview_end,
+                               read_start, read_end)
                 if args.no_preview and episode.count % max(1, round(cfg['fps'])) == 0:
                     print(f'RECORDING: {episode.count} samples saved', flush=True)
             cv2.putText(frame, 'RECORDING' if episode else 's:start f:finish d:discard q:quit',
                         (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
+            cv2.putText(overview_frame, 'LOGITECH OVERVIEW', (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
             if args.no_preview:
                 key = os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
             else:
                 cv2.imshow('ACT wrist demonstration', frame)
+                cv2.imshow('ACT Logitech overview', overview_frame)
                 key = cv2.waitKey(1) & 255
             if key == ord('s') and episode is None:
-                episode = Episode(ROOT / 'data' / f'episode-{time.time_ns()}', cfg)
+                print('Returning to saved start pose; torque will be released for hand guidance.', flush=True)
+                def poll_key():
+                    if args.no_preview:
+                        return os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
+                    wrist_ok, wrist = cap.read()
+                    overview_ok, overview = overview_cap.read()
+                    if not wrist_ok or not overview_ok:
+                        raise RuntimeError('Camera read failed during return to start pose')
+                    cv2.putText(wrist, 'RETURNING TO START (q/x aborts)', (10, 25),
+                                cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 255), 2)
+                    cv2.putText(overview, 'RETURNING TO START (q/x aborts)', (10, 25),
+                                cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 0, 255), 2)
+                    cv2.imshow('ACT wrist demonstration', wrist)
+                    cv2.imshow('ACT Logitech overview', overview)
+                    return cv2.waitKey(1) & 255
+                cancel_key = return_to_pose(packet, torque_register, cfg,
+                                            session_start_pose, poll_key)
+                if cancel_key != -1:
+                    print('Return canceled; torque is off. Press s to retry or q to quit.', flush=True)
+                    if cancel_key == ord('q'):
+                        break
+                    continue
+                capture_start = time.monotonic_ns()
+                ok, frame = cap.read()
+                capture_end = time.monotonic_ns()
+                if not ok:
+                    raise RuntimeError('Wrist camera read failed after return to start pose')
+                overview_start = time.monotonic_ns()
+                overview_ok, overview_frame = overview_cap.read()
+                overview_end = time.monotonic_ns()
+                if not overview_ok:
+                    raise RuntimeError('Logitech camera read failed after return to start pose')
+                ticks, read_start, read_end = read_positions(packet, cfg)
+                if any(abs(actual - target) > START_RECORD_TOLERANCE_TICKS
+                       for actual, target in zip(ticks, session_start_pose)):
+                    raise RuntimeError(
+                        'Arm moved away from the saved start pose after torque was released: '
+                        f'target={session_start_pose}, actual={ticks}')
+                return_completed_ns = time.monotonic_ns()
+                episode = Episode(ROOT / 'data' / f'episode-{time.time_ns()}',
+                                  cfg, session_start_pose, session_start_pose_ns,
+                                  ticks, return_completed_ns)
+                episode.append(frame, overview_frame, ticks, capture_start,
+                               capture_end, overview_start, overview_end,
+                               read_start, read_end)
                 print(f'RECORDING STARTED: {episode.directory}', flush=True)
             elif key == ord('s'):
                 print('Already recording. Press f to save or d to discard.', flush=True)
@@ -252,6 +455,8 @@ def main():
             lock.close()
         if cap:
             cap.release()
+        if overview_cap:
+            overview_cap.release()
         cv2.destroyAllWindows()
 
 
