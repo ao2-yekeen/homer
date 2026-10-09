@@ -87,3 +87,7 @@ separate timing tool or 10/20/30 Hz study is needed for the first demo. Test bus
 ownership, failed-read handling and the verified torque procedure. Recording
 is not trajectory replay: the next step constructs future-position action
 labels, and ACT learns predictions from images plus current joint positions.
+
+Recorder and continuous collection commands are implemented. See
+[Collect demonstrations](collect-demos.md) for the short run guide, handover
+layout and remaining physical checks.
