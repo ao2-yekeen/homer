@@ -12,7 +12,7 @@ from pathlib import Path
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--output', type=Path, default=Path('outputs/act/smoke.json'))
+    parser.add_argument('--output', type=Path, default=Path('act/outputs/smoke.json'))
     parser.add_argument('--iterations', type=int, default=10)
     parser.add_argument('--warmup', type=int, default=2)
     parser.add_argument('--threads', type=int, default=4)

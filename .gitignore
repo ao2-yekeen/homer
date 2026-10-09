@@ -11,5 +11,7 @@ experiment-archives/
 
 # ACT local environments, weights and benchmark artifacts
 .venv-act/
-data/act/
-outputs/act/
+act/.venv/
+act/data/
+act/outputs/
+act/config/rig.local.yaml

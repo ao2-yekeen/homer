@@ -12,9 +12,9 @@ Use Python 3.10 on Linux x86-64 for the tested CPU environment. Install `uv`
 using its official installer or an existing Python environment, then:
 
 ```bash
-uv venv --python python3.10 .venv-act
-uv pip sync --python .venv-act/bin/python training/act/requirements-cpu.lock --index-strategy unsafe-best-match
-.venv-act/bin/python training/act/smoke_test.py
+uv venv --python python3.10 act/.venv
+uv pip sync --python act/.venv/bin/python act/training/requirements-cpu.lock --index-strategy unsafe-best-match
+act/.venv/bin/python act/training/smoke_test.py
 ```
 
 First run requires network access and downloads the model to the Hugging Face
@@ -22,14 +22,14 @@ cache. Model weights and local reports are ignored by Git. Run from the reposito
 root. Optional saved inputs:
 
 ```bash
-.venv-act/bin/python training/act/smoke_test.py --image wrist.jpg \
+act/.venv/bin/python act/training/smoke_test.py --image wrist.jpg \
   --state 0 0 0 0 0 50 --iterations 20 --threads 4
 ```
 
 Those state values are illustrative source-policy coordinates, **not servo
 ticks**. Default input is constant RGB and the checkpoint's mean state; it checks
 software execution, not grasp quality. Report location defaults to
-`outputs/act/smoke.json`. Invalid shapes, nonfinite outputs and incompatible
+`act/outputs/smoke.json`. Invalid shapes, nonfinite outputs and incompatible
 weights fail the run. Timing is local to the host and configured thread count.
 
 ## Source representation audit

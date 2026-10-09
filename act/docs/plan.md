@@ -15,7 +15,7 @@ tray and the established raised platform, with the base stationary.
    guidance and gripper operation, then use one Pi recorder to save images,
    six measured joint positions in raw ticks and timestamps. Start at 10 FPS.
    Inspect one complete pick-and-place before proceeding. See the
-   [step 2 instructions](act-step-2-teaching-and-sensors.md).
+   [step 2 instructions](step-2.md).
 3. **Collect demonstrations.** Record five successful episodes and inspect them.
    Then aim for about 50 clean demonstrations across five nearby object positions.
    Keep the camera, tray and start pose consistent. Discard failed or incomplete
@@ -43,11 +43,11 @@ tray and the established raised platform, with the base stationary.
 
 | File | Purpose |
 | --- | --- |
-| `pi/act_learning/record.py` | USB camera, joint readback, start/stop/discard and explicit teaching controls in one program |
-| `config/act/rig.example.yaml` | Camera device, 10 FPS, joint order, existing limits and tested gripper settings |
-| `pi/act_learning/export_dataset.py` | Check recordings, create future-position labels and export LeRobot episodes |
-| `training/act/kaggle_train.ipynb` | Pinned installation, fresh ACT setup, training and checkpoint download |
-| `pi/act_learning/run_policy.py` | Preview, CPU timing and bounded supervised execution |
+| `act/runtime/record.py` | USB camera, joint readback, start/stop/discard and explicit teaching controls in one program |
+| `act/config/rig.example.yaml` | Camera device, 10 FPS, joint order, existing limits and tested gripper settings |
+| `act/runtime/export_dataset.py` | Check recordings, create future-position labels and export LeRobot episodes |
+| `act/training/kaggle_train.ipynb` | Pinned installation, fresh ACT setup, training and checkpoint download |
+| `act/runtime/run_policy.py` | Preview, CPU timing and bounded supervised execution |
 
 Reuse the existing SDK and controller limits. Add only checks that catch real
 failures: incomplete readback, frame/state alignment, episode-boundary labels,
@@ -77,4 +77,4 @@ on account availability. Recording at 10 FPS does not imply fresh CPU prediction
 at 10 FPS; chunk execution and feedback delay must be tested in step 5.
 
 References: [official ACT code and example](https://github.com/huggingface/lerobot/tree/v0.4.4/src/lerobot/policies/act),
-[existing software check](../training/act/README.md).
+[existing software check](../training/README.md).

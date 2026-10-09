@@ -42,8 +42,8 @@ all joints and exit guidance without a stale-target movement.
 
 ## 3. Build one recorder
 
-Implement `pi/act_learning/record.py`, with a small
-`config/act/rig.example.yaml` for camera device, FPS, joint order and gripper
+Implement `act/runtime/record.py`, with a small
+`act/config/rig.example.yaml` for camera device, FPS, joint order and gripper
 settings. Reuse SDK position reads and existing limits from the arm bridge.
 No new ROS topics or separate camera process is needed.
 
