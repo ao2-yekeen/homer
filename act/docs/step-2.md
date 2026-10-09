@@ -44,7 +44,8 @@ all joints and exit guidance without a stale-target movement.
 
 Implement `act/runtime/record.py`, with a small
 `act/config/rig.example.yaml` for camera device, FPS, joint order and gripper
-settings. Reuse SDK position reads and existing limits from the arm bridge.
+settings. Reuse SDK position reads from the arm bridge. Accept valid raw ticks (0..4095);
+old task-specific motion limits do not constrain hand-guided recording.
 No new ROS topics or separate camera process is needed.
 
 Provide start, stop and discard keys, plus explicit teaching entry/exit controls

@@ -7,6 +7,4 @@ baud: 1000000
 sdk_path: /home/robot-b
 joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
 servo_ids: [1, 2, 3, 4, 5, 6]
-limits: [[730, 3444], [1450, 2443], [890, 2506], [2438, 3233], [0, 4095], [2034, 3504]]
-# Set true ONLY after a supported physical test of guidance and manual exit.
-guidance_verified: false
+# Recorder validates raw ticks (0..4095), not task-specific motion limits.

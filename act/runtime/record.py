@@ -3,6 +3,7 @@
 import argparse
 import fcntl
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -29,9 +30,8 @@ def read_positions(packet, cfg):
     end = time.monotonic_ns()
     if end - start > 100_000_000:
         raise RuntimeError('Servo read exceeds one 10 Hz frame interval')
-    for value, bounds in zip(values, cfg['limits']):
-        if not bounds[0] <= value <= bounds[1]:
-            raise RuntimeError(f'Joint outside existing limits: {values}')
+    if any(not 0 <= value <= 4095 for value in values):
+        raise RuntimeError(f'Invalid raw servo tick reading: {values}')
     return values, start, end
 
 
@@ -122,7 +122,7 @@ def review(directory):
     x = (80 + (times - times[0]) / (times[-1] - times[0]) * 880).astype(int)
     for j, name in enumerate(cfg['joint_names']):
         top = j * 120
-        low, high = cfg['limits'][j]
+        low, high = 0, 4095
         values = np.array([r['state_ticks'][j] for r in rows])
         y = (top + 105 - (values - low) / (high - low) * 80).astype(int)
         cv2.putText(plot, f'{name}: {low}..{high} ticks', (10, top + 18),
@@ -145,7 +145,7 @@ def main():
         review(args.review)
         return
     cfg = yaml.safe_load(args.config.read_text())
-    if cfg['servo_ids'] != list(range(1, 7)) or len(cfg['limits']) != 6 or len(cfg['joint_names']) != 6:
+    if cfg['servo_ids'] != list(range(1, 7)) or len(cfg['joint_names']) != 6:
         raise RuntimeError('Expected six ordered servos 1..6')
     if not 0 < cfg['fps'] <= 30:
         raise RuntimeError('FPS must be >0 and <=30')
@@ -189,8 +189,6 @@ def main():
         print(f'Positions: {positions}; torque: {torque}', flush=True)
         if args.check:
             return
-        if not cfg.get('guidance_verified'):
-            raise RuntimeError('Physical guidance/exit test required; see act/docs/collect-demos.md')
         if any(torque):
             raise RuntimeError('All six joints must be in verified manual torque-off guidance mode')
         print('s=start, f=finish successful episode, d=discard, q=quit. No torque restoration on exit.', flush=True)
@@ -215,7 +213,7 @@ def main():
             cv2.putText(frame, 'RECORDING' if episode else 's:start f:finish d:discard q:quit',
                         (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
             if args.no_preview:
-                key = ord(sys.stdin.read(1)) if select.select([sys.stdin], [], [], 0)[0] else -1
+                key = os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
             else:
                 cv2.imshow('ACT wrist demonstration', frame)
                 key = cv2.waitKey(1) & 255

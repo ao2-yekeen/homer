@@ -58,12 +58,19 @@ class RecorderTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             record.read_positions(Packet(), {'servo_ids': [1], 'limits': [[0, 200]]})
 
-    def test_outside_limits_is_rejected(self):
+    def test_invalid_raw_ticks_are_rejected(self):
         class Packet:
             def ReadPosSpeed(self, servo):
-                return (201, 0, 0, 0)
+                return (4096, 0, 0, 0)
         with self.assertRaises(RuntimeError):
             record.read_positions(Packet(), {'servo_ids': [1], 'limits': [[0, 200]]})
+
+    def test_old_task_limits_do_not_restrict_recording(self):
+        class Packet:
+            def ReadPosSpeed(self, servo):
+                return (1580, 0, 0, 0)
+        positions, _, _ = record.read_positions(Packet(), {'servo_ids': [4], 'limits': [[2438, 3233]]})
+        self.assertEqual(positions, [1580])
 
     def test_episode_links_image_ticks_and_failure(self):
         with tempfile.TemporaryDirectory() as tmp:

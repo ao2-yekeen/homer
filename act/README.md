@@ -21,5 +21,6 @@ act/
   .venv/      Local Python environment (ignored)
 ```
 
-Reuse the existing arm SDK and limits without moving shared robot code.
+Reuse the existing arm SDK without moving shared robot code. Recording uses raw
+ticks; task-specific motion limits stay in the shared controller.
 Local rig settings belong in `act/config/rig.local.yaml`, which is ignored.

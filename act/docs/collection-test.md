@@ -1,28 +1,27 @@
 # Collection test results
 
-Executed the documented Pi commands:
+Live Pi test after removing the old task-specific recording limits:
 
-```bash
-cd ~/mobile-robot
-bash act/scripts/check-setup.sh
-bash act/scripts/start-demos.sh
-```
+- Camera check: 640×480 MJPEG, short throughput check about 17 FPS.
+- All six servo reads passed at `[2378, 1752, 2112, 1580, 3522, 2054]`.
+- Torque read zero for every servo. Recorder issued no servo writes.
+- The documented `bash act/scripts/start-demos.sh` ran through an interactive SSH terminal.
+- Two episodes were started and discarded continuously in one session: 41 and
+  49 samples at 9.97 and 9.98 samples/s. A third test saved 72 samples at 9.99 samples/s.
+- Every saved image decoded at 640×480, had six associated joint readings and
+  correctly ordered capture/read interval timestamps.
+- Video and joint-plot review generated successfully on the Pi.
+- Fixed buffered terminal input so rapidly typed `dq` discards and exits reliably;
+  the third live test verified this.
 
-Camera: passed, 640×480 MJPEG; short read check measured 15 FPS, device reported
-30 FPS. This is capture throughput, not a completed 10 Hz demonstration test.
+All live tests are labelled `discard`: they verify capture, not a successful
+hand-guided grasp. They must not be included in training. Five software tests
+also pass, including save-success/discard/unfinished-exit with simulated inputs,
+review generation, failed-read rejection, invalid-tick rejection and acceptance
+of joint 4 at 1580 despite obsolete task limits. Simulated data is temporary.
 
-Arm: both commands correctly refused recording because the measured positions
-were `[2378, 1752, 2112, 1580, 3522, 2054]`. Joint 4 is outside the saved
-2438–3233 range. No limits were changed and no motion/torque writes were issued.
-`guidance_verified` remains false in the Pi configuration.
-
-Software: four automated tests passed, including the actual recorder loop with
-simulated camera/servo inputs. It saved one successful episode, discarded another,
-discarded an unfinished episode on quit, and generated the review video and joint
-plot. Simulated episodes used temporary directories and were deleted; they are
-not demonstration data. Failure-read and joint-limit rejection also passed.
-
-Live collection remains `REQUIRES_HARDWARE_TEST`: resolve joint 4's pose or
-calibration discrepancy, verify supported manual gripping/guidance and the wrist
-view, then record and review one real complete pick-and-place. ACT training and
-policy inference are not part of this collection test.
+Recording accepts valid raw ticks (0..4095); the user confirmed earlier ranges
+were specific to another task. Existing shared motion-controller limits were
+not changed. There is no configuration approval flag; torque-off is checked
+before starting. Manual guidance, wrist visibility and successful physical
+pick-and-place remain operator checks before collecting training demos.

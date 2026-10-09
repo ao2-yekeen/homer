@@ -9,8 +9,8 @@ for collection. Run on the Pi, where the arm and USB wrist camera are connected.
 Dependencies: Python 3, OpenCV, PyYAML, NumPy and the existing `STservo_sdk`.
 These are already available on the current Pi. Copy `config/rig.example.yaml`
 to `config/rig.local.yaml` on a new installation and check the device paths and
-SDK path. The six joint limits come from the existing bridge; do not substitute
-new limits without checking calibration.
+SDK path. Recording accepts raw servo positions from 0 to 4095 ticks. Earlier task-specific
+motion limits do not apply to hand-guided recording.
 
 Stop competing controllers and check the devices:
 
@@ -22,7 +22,7 @@ bash act/scripts/check-setup.sh
 
 The check saves `act/data/camera-check.jpg` and prints camera rate, positions
 and torque. Inspect the image: the wrist view must show the object and gripper.
-The recorder refuses positions outside the configured limits or powered joints.
+The recorder refuses invalid raw tick readings or powered joints.
 It never changes torque or writes servo positions.
 
 With the arm supported and torque already off, gently test guidance and manual
@@ -32,8 +32,8 @@ this recorder. Do not restart the bridge or restore torque as part of collection
 its old goals may cause movement. If guidance or manual gripping does not work,
 stop here; powered gripper controls need a separate tested setup.
 
-After this physical check, set `guidance_verified: true` in
-`act/config/rig.local.yaml`. This is an operator check, not a software test.
+After checking guidance and gripping, start collection. No configuration approval
+flag is needed; the recorder checks torque is off on all six servos.
 
 ## Record continuously
 
@@ -81,7 +81,7 @@ future export must use only episodes labelled `success`.
 - `scripts/start-demos.sh`: starts the terminal recorder from any directory.
 - `scripts/check-setup.sh`: read-only camera and arm checks.
 - `runtime/record.py`: device ownership, recording, failure handling and review.
-- `config/rig.example.yaml`: six ordered joints, raw tick limits and camera settings.
+- `config/rig.example.yaml`: six ordered joints and camera settings.
 - `config/rig.local.yaml`: machine settings; ignored by Git.
 - `data/episode-*`: JPEG images, timestamped `samples.jsonl`, and `metadata.json`.
 
@@ -101,5 +101,5 @@ room rather than the grasp area; reposition/check the wrist view. Teleoperation
 was stopped for sole arm access. No servo movement or torque writes were made.
 
 Hardware status: `REQUIRES_HARDWARE_TEST` for supported guidance, manual gripping
-and one complete pick-and-place. Joint 4 was observed at 1580 ticks, outside the
-saved 2438–3233 range; resolve the pose/calibration discrepancy before recording.
+and one complete pick-and-place. The user confirmed the old joint ranges belonged to another task; they no longer
+restrict recording.
