@@ -41,11 +41,11 @@ def main():
     parser.add_argument('--output', type=Path,
                         default=ROOT / 'outputs' / datetime.now().strftime('correction-demo-%Y%m%d-%H%M%S-%f'))
     parser.add_argument('--host', default='pi')
-    parser.add_argument('--steps', type=int, default=342,
-                        help='Policy motor steps before manual handover (default: 342, reduced from 392)')
+    parser.add_argument('--steps', type=int, default=250,
+                        help='Policy motor steps before the optional offset (default: 250)')
     parser.add_argument('--source-run', type=Path, help='Replay this saved PC policy run instead of fresh predictions each demo')
-    parser.add_argument('--steps-before-end', type=int, default=20,
-                        help='Correction pose this many motor steps before the end (default: 20)')
+    parser.add_argument('--steps-before-end', type=int, default=0,
+                        help='Subtract this many motor steps from the selected duration (default: 0)')
     parser.add_argument('--run-act', action='store_true',
                         help='Use fresh ACT attempts (the default unless --source-run is supplied)')
     args = parser.parse_args()

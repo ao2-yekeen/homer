@@ -26,7 +26,7 @@ class DemoCorrectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)
             self.source(source)
-            with patch.object(sys, 'argv', ['demo_and_correct', '--source-run', tmp]), \
+            with patch.object(sys, 'argv', ['demo_and_correct', '--source-run', tmp, '--steps-before-end', '20']), \
                     patch.object(sys.stdin, 'isatty', return_value=True), \
                     patch.object(runner, 'latest_completed_run', return_value=source), \
                     patch.object(runner.subprocess, 'run') as run:
@@ -60,7 +60,7 @@ class DemoCorrectionTests(unittest.TestCase):
                     runner.main()
                 self.assertEqual(run.call_count, 1)
                 args = run.call_args.args[0]
-                self.assertEqual(args[args.index('--steps')+1], '322')
+                self.assertEqual(args[args.index('--steps')+1], '250')
 
     def test_each_success_runs_fresh_policy_then_records_current_pose(self):
         from unittest.mock import Mock
@@ -74,7 +74,7 @@ class DemoCorrectionTests(unittest.TestCase):
         calls = [call.args[0] for call in run.call_args_list]
         self.assertEqual(len(calls), 4)
         for command in calls[::2]:
-            self.assertIn('322', command)
+            self.assertIn('250', command)
             self.assertTrue(command[2].endswith('run_policy.py'))
         for command in calls[1::2]:
             self.assertIn('--once', command[-1])

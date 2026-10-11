@@ -13,8 +13,8 @@ bash act/scripts/demo-and-correct.sh
 ```
 
 Each attempt returns to the saved initial pose and runs ACT using that attempt's
-camera observations. It executes **322 actions** by default: the configured
-342-action duration minus `--steps-before-end 20`. It holds at that attempt's
+camera observations. It executes **250 actions** by default, stopping before chunk 6 begins
+(each chunk contains 50 actions). It holds at that attempt's
 own endpoint, then prompts for **h**. It does not reuse another demo's pose.
 This is a fixed action-count cutoff, not automatic detection of task completion.
 
@@ -27,7 +27,8 @@ Only the manual segment is saved as expert correction data; each correction's
 metadata names its own autonomous source run. Corrections remain on the Pi in
 `act/data`; autonomous reports/images remain under the PC output directory.
 
-`--steps` sets the full duration before the offset is subtracted; `--checkpoint`,
+`--steps` sets the duration (default 250); `--steps-before-end` optionally
+subtracts an offset (default 0); `--checkpoint`,
 `--output` and `--host` select the policy, output prefix and Pi. `--run-act` is
 accepted explicitly but fresh ACT is already the default.
 
@@ -36,11 +37,11 @@ accepted explicitly but fresh ACT is already the default.
 To reuse a specific saved trajectory instead of generating fresh predictions:
 
 ```bash
-bash act/scripts/demo-and-correct.sh --source-run act/outputs/correction-demo-20261011-120002-062436
+bash act/scripts/demo-and-correct.sh --source-run act/outputs/correction-demo-20261011-120002-062436 --steps-before-end 92
 ```
 
 This reaches that run's initial pose and replays its saved commands through
-step 322, holds at its saved measured endpoint, then prompts for **h**. After
+step 250, holds at its saved measured endpoint, then prompts for **h**. After
 **f**, this explicit saved-run mode returns directly to the same endpoint for
 another correction. **q/x** cancels positioning or replay. Saved replay cannot
 adapt to a changed object position. Change the cutoff with `--steps-before-end`.
@@ -130,3 +131,6 @@ tests passed; **REQUIRES_HARDWARE_TEST**.
 each demo. The recorder exits after each successful correction; the PC starts
 a fresh attempt after scene reset. Fourteen software tests passed. Physical
 validation remains **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 earlier handover: fresh attempts now stop after 250 actions, before
+chunk 6, and hold for h. Physical validation remains **REQUIRES_HARDWARE_TEST**.
