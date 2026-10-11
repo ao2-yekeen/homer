@@ -99,3 +99,16 @@ Send `act/outputs/act-correction-training.zip`. After extraction, run
 dependencies, fine-tunes the included Kaggle checkpoint for 2,000 steps, resumes
 interrupted runs automatically, and produces `act-trained-results.zip` to send
 back. No repository checkout is needed.
+
+## Kaggle notebook
+
+Import `act/training/train-corrections-kaggle.ipynb` into Kaggle. Upload the same
+`act/outputs/act-correction-training.zip` as a private dataset and attach it.
+Enable Internet and a GPU, then run all cells. The notebook uses isolated
+Python 3.11 and CUDA 12.6 wheels, loads the included previous checkpoint, and
+fine-tunes for 2,000 steps. Output is `/kaggle/working/act-trained-results.zip`.
+A text copy of the cells is in `act/training/KAGGLE-CORRECTIONS-CELLS.txt`.
+The old `train-act-kaggle.ipynb` trains from scratch and is not this workflow.
+Notebook cells were checked locally; a Kaggle GPU run remains to be done.
+
+Kaggle input and accelerator setup: https://www.kaggle.com/docs/notebooks
