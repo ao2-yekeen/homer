@@ -1,0 +1,24 @@
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+# Separate Python 3.11: independent of Kaggle's kernel and ensurepip.
+ENV = Path('/tmp/act-kaggle-py311')
+PYTHON = ENV / 'bin/python'
+def run(command):
+    subprocess.run([str(x) for x in command], check=True)
+
+if not PYTHON.exists():
+    tools_dir = Path('/tmp/act-kaggle-tools')
+    run([sys.executable, '-m', 'pip', 'install', '--target', tools_dir, 'uv'])
+    uv_env = dict(os.environ, PYTHONPATH=str(tools_dir))
+    subprocess.run([sys.executable, '-m', 'uv', 'venv', '--python', '3.11',
+                    '--managed-python', '--seed', str(ENV)], env=uv_env, check=True)
+if not (ENV / 'ready').exists():
+    run([PYTHON, '-m', 'pip', 'install', '--upgrade', 'pip'])
+    run([PYTHON, '-m', 'pip', 'install', 'torch==2.7.1', 'torchvision==0.22.1',
+         '--index-url', 'https://download.pytorch.org/whl/cu126'])
+    run([PYTHON, '-m', 'pip', 'install', '-r', ROOT / 'requirements.txt'])
+    (ENV / 'ready').touch()
+run([PYTHON, '-c', "import torch; assert torch.cuda.is_available(), 'Select a GPU accelerator in Kaggle settings'; print('GPU:', torch.cuda.get_device_name(0), 'Torch:', torch.__version__)"])
