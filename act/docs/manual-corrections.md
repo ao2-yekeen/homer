@@ -4,49 +4,46 @@ Use the current ACT checkpoint to reach the late placement state, then record
 only successful human recoveries. This extends the existing imitation-learning
 dataset; it does not run reinforcement learning or automatically retrain ACT.
 
-## Repeat corrections without rerunning ACT
+## Fresh predictions for every demo
 
-From the PC repository terminal:
+Run from the PC repository terminal:
 
 ```bash
 bash act/scripts/demo-and-correct.sh
 ```
 
-The command selects the most recently saved **completed** policy run. On startup,
-it reaches that run's initial pose, then replays its saved motor commands up to
-**20 motor steps before the end** (about two seconds at 10 Hz). It holds at the
-saved measured handover pose and only then prompts for **h**. No ACT inference
-is needed. Place the object and container as they were at the beginning of the
-source run before starting.
+Each attempt returns to the saved initial pose and runs ACT using that attempt's
+camera observations. It executes **322 actions** by default: the configured
+342-action duration minus `--steps-before-end 20`. It holds at that attempt's
+own endpoint, then prompts for **h**. It does not reuse another demo's pose.
+This is a fixed action-count cutoff, not automatic detection of task completion.
 
-Support the arm, then **h** releases torque and starts recording your manual
-finish. **f** saves a successful correction and immediately returns directly to
-the same handover pose, powered and holding. Reset the object and container to
-match that pose before pressing **h** again. The approach is replayed once on
-startup, not after each save. **q/x** cancels automatic motion; **q** exits the
-recorder. A discarded correction (**d**) leaves torque off at the current pose.
+Support the arm, press **h** to release torque and record the manual finish,
+then **f** to save successful placement and release. After saving, reset the
+object/container and press **Enter** at the PC prompt for the next fresh attempt.
+The arm stays torque-off after your manual finish until the next attempt starts.
+**q** quits. Failed/interrupted ACT runs do not open the correction recorder.
+Only the manual segment is saved as expert correction data; each correction's
+metadata names its own autonomous source run. Corrections remain on the Pi in
+`act/data`; autonomous reports/images remain under the PC output directory.
 
-Only manual motion between **h** and **f** is recorded; approach, return motion
-and waiting are excluded. Saved metadata includes the source run, selected step,
-initial pose, replay commands and correction pose. Corrections remain on the Pi
-in `act/data`. Saved replay does not adapt to changed object positions.
+`--steps` sets the full duration before the offset is subtracted; `--checkpoint`,
+`--output` and `--host` select the policy, output prefix and Pi. `--run-act` is
+accepted explicitly but fresh ACT is already the default.
 
-Choose a particular existing run:
+### Optional saved-run replay
+
+To reuse a specific saved trajectory instead of generating fresh predictions:
 
 ```bash
 bash act/scripts/demo-and-correct.sh --source-run act/outputs/correction-demo-20261011-120002-062436
 ```
 
-That completed 342-step attempt supplies its measured **step-322** pose from
-`movement-report.json`, leaving 20 actions for manual completion. Change the
-offset with `--steps-before-end 50`, for example. Faulted runs are excluded from
-automatic selection. The selected pose may already be after release or during
-withdrawal; the offset does not detect task phases.
-
-To collect from a fresh policy attempt instead, use **--run-act**. This runs
-342 steps by default (50 fewer than 392), then returns to its initial pose and replays to the selected handover for corrections. `--steps`, `--checkpoint` and `--output` apply to
-this fresh-run mode; `--host` applies to both modes. Failed/interrupted fresh
-runs do not open the correction recorder. No model is loaded in the default mode.
+This reaches that run's initial pose and replays its saved commands through
+step 322, holds at its saved measured endpoint, then prompts for **h**. After
+**f**, this explicit saved-run mode returns directly to the same endpoint for
+another correction. **q/x** cancels positioning or replay. Saved replay cannot
+adapt to a changed object position. Change the cutoff with `--steps-before-end`.
 
 ## Start corrections after a separately run demo
 
@@ -128,3 +125,8 @@ passed; new positioning remains **REQUIRES_HARDWARE_TEST**.
 replays the saved commands through the selected handover step before prompting
 for h. Successful saves still return directly to the handover. Twelve software
 tests passed; **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 per-attempt handover: fresh ACT predictions are now the default for
+each demo. The recorder exits after each successful correction; the PC starts
+a fresh attempt after scene reset. Fourteen software tests passed. Physical
+validation remains **REQUIRES_HARDWARE_TEST**.

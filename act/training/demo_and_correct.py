@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Replay a saved ACT approach, then collect repeatable manual corrections."""
+"""Run a fresh ACT attempt for each manual correction."""
 import argparse
 import json
 from datetime import datetime
@@ -43,24 +43,36 @@ def main():
     parser.add_argument('--host', default='pi')
     parser.add_argument('--steps', type=int, default=342,
                         help='Policy motor steps before manual handover (default: 342, reduced from 392)')
-    parser.add_argument('--source-run', type=Path, help='Existing PC policy output directory')
+    parser.add_argument('--source-run', type=Path, help='Replay this saved PC policy run instead of fresh predictions each demo')
     parser.add_argument('--steps-before-end', type=int, default=20,
                         help='Correction pose this many motor steps before the end (default: 20)')
     parser.add_argument('--run-act', action='store_true',
-                        help='Run a fresh ACT attempt before corrections instead of skipping it')
+                        help='Use fresh ACT attempts (the default unless --source-run is supplied)')
     args = parser.parse_args()
     if args.steps_before_end < 0:
         parser.error('--steps-before-end must be zero or greater')
     if not sys.stdin.isatty():
         parser.error('Run from an interactive PC terminal for hand-guided correction keys')
-    if args.run_act:
-        print(f'Running ACT for {args.steps} steps before corrections.', flush=True)
-        subprocess.run([sys.executable, '-u', str(ROOT / 'training/run_policy.py'),
-                        '--checkpoint', str(args.checkpoint), '--output', str(args.output),
-                        '--host', args.host, '--steps', str(args.steps)], check=True)
-        source = args.output
-    else:
-        source = args.source_run or latest_completed_run()
+    if args.run_act or args.source_run is None:
+        attempt = 0
+        while True:
+            source = args.output if attempt == 0 else args.output.with_name(f'{args.output.name}-{attempt+1}')
+            steps = max(1, args.steps - args.steps_before_end)
+            print(f'Running a fresh ACT attempt for {steps} steps, then holding for h.', flush=True)
+            subprocess.run([sys.executable, '-u', str(ROOT / 'training/run_policy.py'),
+                            '--checkpoint', str(args.checkpoint), '--output', str(source),
+                            '--host', args.host, '--steps', str(steps)], check=True)
+            command = 'cd ~/mobile-robot && ' + shlex.join([
+                'bash', 'act/scripts/start-corrections.sh', '--source-run', source.name, '--once'])
+            result = subprocess.run(['ssh', '-t', args.host, command], check=False)
+            if result.returncode == 0:
+                return
+            if result.returncode != 10:
+                raise subprocess.CalledProcessError(result.returncode, result.args)
+            if input('Saved. Reset object/container. Enter = fresh demo; q = quit: ').strip().lower() == 'q':
+                return
+            attempt += 1
+    source = args.source_run
     pose = saved_chunk_pose(source, args.steps_before_end)
     pose_file = source / 'correction-start-pose.json'
     pose_file.write_text(json.dumps(pose, indent=2)+'\n')

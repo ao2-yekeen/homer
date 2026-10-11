@@ -33,7 +33,7 @@ class Camera:
 
 
 class CorrectionTests(unittest.TestCase):
-    def run_keys(self, keys, failure=None, start_pose=None):
+    def run_keys(self, keys, failure=None, start_pose=None, once=False):
         packet = Packet()
         cfg = dict(servo_ids=list(range(1, 7)), joint_names=[str(i) for i in range(6)], fps=10)
         keys = iter(keys)
@@ -47,9 +47,9 @@ class CorrectionTests(unittest.TestCase):
             cameras = [('wrist', Camera()), ('overview', Camera())]
             if failure:
                 with self.assertRaises(failure):
-                    correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose)
+                    correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose, once=once)
             else:
-                correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose)
+                correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose, once=once)
             results = []
             for directory in Path(tmp).glob('episode-*'):
                 metadata = json.loads((directory / 'metadata.json').read_text())
@@ -97,6 +97,14 @@ class CorrectionTests(unittest.TestCase):
         self.assertEqual(move.call_count, 1)
         send.assert_not_called()
         self.assertEqual(results, [])
+        self.assertEqual(writes, [(i, 40, 0) for i in range(1, 7)])
+
+    def test_once_saves_and_exits_without_moving_to_shared_pose(self):
+        with patch.object(correction, 'return_to_pose') as move:
+            writes, [(metadata, rows)] = self.run_keys(['h', -1, 'f'], once=True)
+        move.assert_not_called()
+        self.assertEqual(metadata['outcome'], 'success')
+        self.assertEqual(len(rows), 2)
         self.assertEqual(writes, [(i, 40, 0) for i in range(1, 7)])
 
     def test_cancel_initial_move_never_starts_recording(self):

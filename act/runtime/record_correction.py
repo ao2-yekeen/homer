@@ -63,7 +63,7 @@ class CorrectionEpisode:
 
 
 def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_run,
-                start_pose=None):
+                start_pose=None, once=False):
     episode = None
     deadline = time.monotonic()
     if start_pose is not None:
@@ -107,6 +107,8 @@ def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_
                 saved = episode
                 episode = None
                 saved.finish('success' if key == ord('f') and saved.count > 1 else 'discard')
+                if saved.metadata['outcome'] == 'success' and once:
+                    return 10
                 if saved.metadata['outcome'] == 'success' and start_pose is not None:
                     print('SAVED. Returning to correction pose (q/x cancels).', flush=True)
                     if return_to_pose(packet, torque_register, cfg, start_pose['state_ticks'],
@@ -155,6 +157,8 @@ def main():
     parser.add_argument('--source-run', help='Policy run name for correction provenance')
     parser.add_argument('--start-pose', type=Path,
                         help='Saved state JSON: move here on startup and after each success')
+    parser.add_argument('--once', action='store_true',
+                        help='Exit with status 10 after one successful correction')
     args = parser.parse_args()
     start_pose = json.loads(args.start_pose.read_text()) if args.start_pose else None
     if not sys.stdin.isatty():
@@ -184,7 +188,10 @@ def main():
         def poll_key():
             return os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
 
-        record_loop(cfg, packet, torque_register, cameras, poll_key, args.output, args.source_run, start_pose)
+        result = record_loop(cfg, packet, torque_register, cameras, poll_key, args.output,
+                             args.source_run, start_pose, once=args.once)
+        if result:
+            raise SystemExit(result)
     except KeyboardInterrupt:
         print('\nStopped. Torque state unchanged; no automatic return.', flush=True)
     finally:

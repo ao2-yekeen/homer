@@ -26,7 +26,7 @@ class DemoCorrectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             source = Path(tmp)
             self.source(source)
-            with patch.object(sys, 'argv', ['demo_and_correct']), \
+            with patch.object(sys, 'argv', ['demo_and_correct', '--source-run', tmp]), \
                     patch.object(sys.stdin, 'isatty', return_value=True), \
                     patch.object(runner, 'latest_completed_run', return_value=source), \
                     patch.object(runner.subprocess, 'run') as run:
@@ -60,7 +60,27 @@ class DemoCorrectionTests(unittest.TestCase):
                     runner.main()
                 self.assertEqual(run.call_count, 1)
                 args = run.call_args.args[0]
-                self.assertEqual(args[args.index('--steps')+1], '342')
+                self.assertEqual(args[args.index('--steps')+1], '322')
+
+    def test_each_success_runs_fresh_policy_then_records_current_pose(self):
+        from unittest.mock import Mock
+        with patch.object(sys, 'argv', ['demo_and_correct']), \
+                patch.object(sys.stdin, 'isatty', return_value=True), \
+                patch('builtins.input', return_value=''), \
+                patch.object(runner.subprocess, 'run', side_effect=[
+                    Mock(returncode=0), Mock(returncode=10),
+                    Mock(returncode=0), Mock(returncode=0)]) as run:
+            runner.main()
+        calls = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(len(calls), 4)
+        for command in calls[::2]:
+            self.assertIn('322', command)
+            self.assertTrue(command[2].endswith('run_policy.py'))
+        for command in calls[1::2]:
+            self.assertIn('--once', command[-1])
+            self.assertNotIn('--start-pose', command[-1])
+        self.assertNotEqual(calls[0][calls[0].index('--output')+1],
+                            calls[2][calls[2].index('--output')+1])
 
     def test_source_and_host_overrides(self):
         with tempfile.TemporaryDirectory(prefix='attempt ') as tmp:
