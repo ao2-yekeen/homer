@@ -12,21 +12,24 @@ From the PC repository terminal:
 bash act/scripts/demo-and-correct.sh
 ```
 
-The command selects the most recently saved **completed** policy run and uses
-its measured joint pose **20 motor steps before the end** (about two seconds at 10 Hz). It skips ACT inference
-and the preceding trajectory. The arm moves to that pose on startup using the
-existing gradual return routine, then holds. **h** releases torque and starts
-recording your manual finish. **f** saves a successful correction and immediately
-returns to the same correction pose, powered and holding. Reset the object and
-container to match that pose before pressing **h** again. **q/x** cancels a return;
-**q** exits the recorder. A discarded correction (**d**) leaves torque off at the
-current pose.
+The command selects the most recently saved **completed** policy run. On startup,
+it reaches that run's initial pose, then replays its saved motor commands up to
+**20 motor steps before the end** (about two seconds at 10 Hz). It holds at the
+saved measured handover pose and only then prompts for **h**. No ACT inference
+is needed. Place the object and container as they were at the beginning of the
+source run before starting.
 
-Only manual motion between **h** and **f** is recorded; positioning, return
-motion and waiting are excluded. Saved metadata includes the source run,
-source report, executed step and correction pose. Corrections remain on the
-Pi in `act/data`. This moves to a pose, not through the final action chunk, and
-cannot recreate the scene or put an object in the gripper automatically.
+Support the arm, then **h** releases torque and starts recording your manual
+finish. **f** saves a successful correction and immediately returns directly to
+the same handover pose, powered and holding. Reset the object and container to
+match that pose before pressing **h** again. The approach is replayed once on
+startup, not after each save. **q/x** cancels automatic motion; **q** exits the
+recorder. A discarded correction (**d**) leaves torque off at the current pose.
+
+Only manual motion between **h** and **f** is recorded; approach, return motion
+and waiting are excluded. Saved metadata includes the source run, selected step,
+initial pose, replay commands and correction pose. Corrections remain on the Pi
+in `act/data`. Saved replay does not adapt to changed object positions.
 
 Choose a particular existing run:
 
@@ -41,7 +44,7 @@ automatic selection. The selected pose may already be after release or during
 withdrawal; the offset does not detect task phases.
 
 To collect from a fresh policy attempt instead, use **--run-act**. This runs
-342 steps by default (50 fewer than 392), then uses that run's pose 20 steps before the end for repeated corrections. `--steps`, `--checkpoint` and `--output` apply to
+342 steps by default (50 fewer than 392), then returns to its initial pose and replays to the selected handover for corrections. `--steps`, `--checkpoint` and `--output` apply to
 this fresh-run mode; `--host` applies to both modes. Failed/interrupted fresh
 runs do not open the correction recorder. No model is loaded in the default mode.
 
@@ -120,3 +123,8 @@ motion was executed for this update; **REQUIRES_HARDWARE_TEST**.
 2026-10-11 near-end selection: default offset is 20 motor steps, using saved
 per-step measured feedback rather than 50-step chunk snapshots. Software tests
 passed; new positioning remains **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 startup replay fix: startup now reaches the saved initial pose and
+replays the saved commands through the selected handover step before prompting
+for h. Successful saves still return directly to the handover. Twelve software
+tests passed; **REQUIRES_HARDWARE_TEST**.

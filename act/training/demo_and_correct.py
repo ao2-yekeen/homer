@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start repeatable corrections from a saved near-end pose, without rerunning ACT."""
+"""Replay a saved ACT approach, then collect repeatable manual corrections."""
 import argparse
 import json
 from datetime import datetime
@@ -21,7 +21,9 @@ def saved_chunk_pose(directory, steps_before_end=20):
     ticks = commands[steps-1]['measured_ticks'] if steps else initial['state_ticks']
     return dict(state_ticks=ticks, joint_names=initial['joint_names'],
                 source_run=directory.name, source_state=report_path.name,
-                executed_steps=steps, steps_before_end=steps_before_end)
+                executed_steps=steps, steps_before_end=steps_before_end,
+                initial_ticks=initial['state_ticks'],
+                replay_actions=[command['sent_ticks'] for command in commands[:steps]])
 
 
 def latest_completed_run():
@@ -66,8 +68,9 @@ def main():
     subprocess.run(['scp', str(pose_file),
                     f'{args.host}:mobile-robot/{remote_pose}'], check=True)
     print(f'Corrections from {source.name}, step {pose["executed_steps"]}: '
-          f'{pose["state_ticks"]}. Reset the object to match this pose. '
-          'Arm moves on startup and after each saved correction.', flush=True)
+          f'{pose["state_ticks"]}. Startup returns to the initial pose and replays '
+          'the saved approach before asking for h. After saving, it returns '
+          'directly to the correction pose.', flush=True)
     command = 'cd ~/mobile-robot && ' + shlex.join([
         'bash', 'act/scripts/start-corrections.sh', '--source-run', source.name,
         '--start-pose', remote_pose])

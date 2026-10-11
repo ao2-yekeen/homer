@@ -15,6 +15,7 @@ import cv2
 import yaml
 
 from record import ROOT, open_arm, read_positions, return_to_pose, set_torque
+from test_policy_chunk import write_targets
 
 
 class CorrectionEpisode:
@@ -66,10 +67,26 @@ def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_
     episode = None
     deadline = time.monotonic()
     if start_pose is not None:
+        if 'replay_actions' in start_pose:
+            print('Moving to saved initial pose before replay (q/x cancels).', flush=True)
+            if return_to_pose(packet, torque_register, cfg, start_pose['initial_ticks'],
+                              poll_key, keep_powered=True) != -1:
+                return
+            actions = start_pose['replay_actions']
+            print(f'REPLAY: {len(actions)} saved actions; then hold for h.', flush=True)
+            for step, targets in enumerate(actions, 1):
+                if poll_key() in (ord('q'), ord('x')):
+                    set_torque(packet, torque_register, cfg['servo_ids'], False)
+                    return
+                write_targets(packet, cfg['servo_ids'], targets)
+                time.sleep(1 / cfg['fps'])
+                if step % round(cfg['fps']) == 0 or step == len(actions):
+                    print(f'REPLAY: {step}/{len(actions)}', flush=True)
         print('Moving to saved correction pose (q/x cancels).', flush=True)
         if return_to_pose(packet, torque_register, cfg, start_pose['state_ticks'],
                           poll_key, keep_powered=True) != -1:
             return
+    deadline = time.monotonic()
     print('READY: support the arm, then h releases torque and starts recording. '
           'f = successful placement/release; d = discard; q = quit.', flush=True)
     try:

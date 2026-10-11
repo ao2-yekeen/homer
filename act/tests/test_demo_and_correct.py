@@ -16,7 +16,7 @@ spec.loader.exec_module(runner)
 class DemoCorrectionTests(unittest.TestCase):
     def source(self, directory):
         (directory / 'movement-report.json').write_text(json.dumps(dict(
-            commands=[dict(measured_ticks=[1000+step]*6) for step in range(1, 343)])))
+            commands=[dict(measured_ticks=[1000+step]*6, sent_ticks=[1100+step]*6) for step in range(1, 343)])))
         for chunk, steps, finished in [(0, 0, False), (6, 300, False), (7, 342, True)]:
             (directory / f'{chunk:03d}-state.json').write_text(json.dumps(dict(
                 state_ticks=[2000+chunk]*6, joint_names=['a']*6,
@@ -36,6 +36,9 @@ class DemoCorrectionTests(unittest.TestCase):
             pose = json.loads((source / 'correction-start-pose.json').read_text())
             self.assertEqual(pose['state_ticks'], [1322]*6)
             self.assertEqual(pose['executed_steps'], 322)
+            self.assertEqual(pose['initial_ticks'], [2000]*6)
+            self.assertEqual(len(pose['replay_actions']), 322)
+            self.assertEqual(pose['replay_actions'][-1], [1422]*6)
             self.assertEqual(pose['source_state'], 'movement-report.json')
             self.assertEqual(correction.args[0][:3], ['ssh', '-t', 'pi'])
             self.assertIn('--start-pose act/data/correction-start-pose.json', correction.args[0][3])

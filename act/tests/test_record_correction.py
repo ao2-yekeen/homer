@@ -70,6 +70,35 @@ class CorrectionTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertTrue(all(call.kwargs['keep_powered'] for call in move.call_args_list))
 
+    def test_startup_reaches_initial_pose_then_replays_before_manual_recording(self):
+        pose = dict(initial_ticks=[2000]*6, state_ticks=[2100]*6,
+                    replay_actions=[[2050]*6, [2090]*6])
+        events = []
+        def move(*args, **kwargs):
+            events.append(('move', args[3]))
+            return -1
+        def send(*args):
+            events.append(('replay', args[2]))
+        with patch.object(correction, 'return_to_pose', side_effect=move), \
+                patch.object(correction, 'write_targets', side_effect=send):
+            writes, [(metadata, rows)] = self.run_keys([-1, -1, 'h', -1, 'f', 'q'], start_pose=pose)
+        self.assertEqual(events, [('move', [2000]*6), ('replay', [2050]*6),
+                                  ('replay', [2090]*6), ('move', [2100]*6),
+                                  ('move', [2100]*6)])
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(writes, [(i, 40, 0) for i in range(1, 7)])
+
+    def test_cancel_replay_does_not_record_or_reach_handover(self):
+        pose = dict(initial_ticks=[2000]*6, state_ticks=[2100]*6,
+                    replay_actions=[[2050]*6, [2090]*6])
+        with patch.object(correction, 'return_to_pose', return_value=-1) as move, \
+                patch.object(correction, 'write_targets') as send:
+            writes, results = self.run_keys(['q'], start_pose=pose)
+        self.assertEqual(move.call_count, 1)
+        send.assert_not_called()
+        self.assertEqual(results, [])
+        self.assertEqual(writes, [(i, 40, 0) for i in range(1, 7)])
+
     def test_cancel_initial_move_never_starts_recording(self):
         with patch.object(correction, 'return_to_pose', return_value=ord('q')) as move:
             writes, results = self.run_keys([], start_pose=dict(state_ticks=[2100]*6))
