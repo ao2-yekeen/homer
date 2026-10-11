@@ -137,3 +137,18 @@ chunk 6, and hold for h. Physical validation remains **REQUIRES_HARDWARE_TEST**.
 
 2026-10-11 handover adjustment: fresh attempts now stop after 150 actions,
 before chunk 4, and hold for h. **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 disconnected-session fix: the Pi monitors both SSH protocol pipes
+even during the initial-pose wait and action execution. A disconnected session
+exits and releases its serial port/lock without torque or cleanup movement
+commands. The PC closes the protocol on interruption and bounds its SSH cleanup
+wait. An abrupt disconnect may leave an incomplete movement report; the current
+servo goal and torque state persist. An unrelated live controller still owns
+its port and is not automatically killed. Pipe/lock tests require no hardware;
+physical interruption remains **REQUIRES_HARDWARE_TEST**.
+
+Validation: six connection/PC-cleanup tests, four policy-session tests and
+fourteen correction tests passed. A motor-free SSH test on the Pi confirmed
+that closing PC input terminated a simulated blocked endpoint (exit 130) and
+left no endpoint process. Deployed runtime file hashes match the PC. No serial
+port was opened and no physical motion or torque commands were sent.

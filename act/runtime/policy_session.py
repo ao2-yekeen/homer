@@ -13,6 +13,7 @@ import yaml
 
 from record import checked, open_arm, return_to_pose
 from test_policy_chunk import clamp_ticks, write_targets
+from connection_watch import watch_connection
 
 
 def read_positions(packet, cfg):
@@ -139,4 +140,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    with watch_connection():
+        main()
