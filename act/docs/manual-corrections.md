@@ -4,7 +4,29 @@ Use the current ACT checkpoint to reach the late placement state, then record
 only successful human recoveries. This extends the existing imitation-learning
 dataset; it does not run reinforcement learning or automatically retrain ACT.
 
-## Collect on the Pi
+## Run the demo and automatically start corrections
+
+From the PC repository terminal:
+
+```bash
+bash act/scripts/demo-and-correct.sh
+```
+
+This uses `act/outputs/kaggle-trained/policy`, returns to the saved initial pose
+through the existing policy runner, executes **342 motor steps** (50 fewer than
+the previous 392), then opens the correction recorder in the same terminal.
+The arm holds until you support it and press **h**. The policy run name is
+automatically saved in the correction metadata. Corrections stay on the Pi in
+`act/data`; policy diagnostics are saved on the PC in `act/outputs/correction-demo-*`.
+The existing standalone `run_policy.py` retains its own default; this shortened
+default applies to `demo-and-correct.sh`.
+
+Pass `--steps N` to choose an earlier handover, or `--checkpoint PATH`,
+`--output PATH`, and `--host HOST` to override the defaults. A failed or
+interrupted policy process does not automatically launch correction recording.
+The transition is based on step count, not automatic detection of task failure.
+
+## Start corrections after a separately run demo
 
 After a supervised policy attempt has stopped and is holding, leave the object
 and arm where they are. From the PC repository terminal:
