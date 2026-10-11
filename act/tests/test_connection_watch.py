@@ -71,6 +71,28 @@ with watch_connection():
         self.assertEqual(child.wait(timeout=3), 0)
         self.assertEqual(child.stderr.read(), b'')
 
+    def test_completed_session_can_clean_up_after_client_closes_input(self):
+        code = '''
+import sys, time
+sys.path.insert(0, sys.argv[1])
+from connection_watch import watch_connection
+with watch_connection() as finished:
+    finished()
+    print('FINISHED', flush=True)
+    assert sys.stdin.read() == ''
+    time.sleep(0.3)  # Report/camera/serial cleanup after client closes input.
+    print('CLEANED UP', flush=True)
+'''
+        child = subprocess.Popen([sys.executable, '-u', '-c', code, str(RUNTIME)],
+                                 stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+        self.addCleanup(self.clean_child, child)
+        self.assertEqual(child.stdout.readline(), b'FINISHED\n')
+        child.stdin.close()
+        self.assertEqual(child.stdout.readline(), b'CLEANED UP\n')
+        self.assertEqual(child.wait(timeout=3), 0)
+        self.assertEqual(child.stderr.read(), b'')
+
 
 if __name__ == '__main__':
     unittest.main()

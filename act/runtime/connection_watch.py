@@ -28,8 +28,12 @@ def watch_connection(input_fd=0, output_fd=1):
 
     worker = threading.Thread(target=watch, daemon=True)
     worker.start()
-    try:
-        yield
-    finally:
+
+    def stop():
         stopped.set()
         worker.join()
+
+    try:
+        yield stop
+    finally:
+        stop()

@@ -37,7 +37,7 @@ def read_positions(packet, cfg):
     return values, start, end
 
 
-def main():
+def main(connection_finished=lambda: None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
@@ -118,6 +118,9 @@ def main():
         report['hold_command_sent'] = True
         final = snapshot(chunk)
         final['finished'] = True
+        # The PC closes its input on this message. Stop watching first so
+        # normal completion cannot interrupt report/camera/serial cleanup.
+        connection_finished()
         print(json.dumps(final), flush=True)
     except BaseException as exc:
         report.update(completed=False, error=str(exc))
@@ -140,5 +143,5 @@ def main():
 
 
 if __name__ == '__main__':
-    with watch_connection():
-        main()
+    with watch_connection() as connection_finished:
+        main(connection_finished)

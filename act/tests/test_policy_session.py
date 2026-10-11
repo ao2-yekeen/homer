@@ -53,13 +53,16 @@ class PolicySessionTests(unittest.TestCase):
                  patch.object(session.time, 'sleep'), \
                  patch.object(session, 'read_positions', side_effect=[feedback, RuntimeError('servo overload')] if fault else None, return_value=feedback) as read, \
                  patch.object(session, 'write_targets') as write:
+                finished = MagicMock(side_effect=lambda: self.assertNotIn('"finished": true', sys.stdout.getvalue()))
                 if fault:
                     with self.assertRaisesRegex(RuntimeError, 'servo overload'):
-                        session.main()
+                        session.main(finished)
+                    finished.assert_not_called()
                     self.assertEqual(read.call_count, 2)
                     write.assert_not_called()
                 else:
-                    session.main()
+                    session.main(finished)
+                    finished.assert_called_once_with()
                     self.assertEqual(write.call_count, 2)  # action, then measured hold
             report = json.loads((Path(tmp) / 'movement-report.json').read_text())
             port.closePort.assert_called_once()
