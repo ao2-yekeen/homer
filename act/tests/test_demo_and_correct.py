@@ -60,7 +60,7 @@ class DemoCorrectionTests(unittest.TestCase):
                     runner.main()
                 self.assertEqual(run.call_count, 1)
                 args = run.call_args.args[0]
-                self.assertEqual(args[args.index('--steps')+1], '250')
+                self.assertEqual(args[args.index('--steps')+1], '150')
 
     def test_each_success_runs_fresh_policy_then_records_current_pose(self):
         from unittest.mock import Mock
@@ -74,7 +74,7 @@ class DemoCorrectionTests(unittest.TestCase):
         calls = [call.args[0] for call in run.call_args_list]
         self.assertEqual(len(calls), 4)
         for command in calls[::2]:
-            self.assertIn('250', command)
+            self.assertIn('150', command)
             self.assertTrue(command[2].endswith('run_policy.py'))
         for command in calls[1::2]:
             self.assertIn('--once', command[-1])

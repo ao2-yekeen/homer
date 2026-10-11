@@ -41,8 +41,8 @@ def main():
     parser.add_argument('--output', type=Path,
                         default=ROOT / 'outputs' / datetime.now().strftime('correction-demo-%Y%m%d-%H%M%S-%f'))
     parser.add_argument('--host', default='pi')
-    parser.add_argument('--steps', type=int, default=250,
-                        help='Policy motor steps before the optional offset (default: 250)')
+    parser.add_argument('--steps', type=int, default=150,
+                        help='Policy motor steps before the optional offset (default: 150)')
     parser.add_argument('--source-run', type=Path, help='Replay this saved PC policy run instead of fresh predictions each demo')
     parser.add_argument('--steps-before-end', type=int, default=0,
                         help='Subtract this many motor steps from the selected duration (default: 0)')
