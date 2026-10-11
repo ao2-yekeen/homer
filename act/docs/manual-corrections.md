@@ -13,7 +13,7 @@ bash act/scripts/demo-and-correct.sh
 ```
 
 The command selects the most recently saved **completed** policy run and uses
-its measured joint pose entering the final action chunk. It skips ACT inference
+its measured joint pose **20 motor steps before the end** (about two seconds at 10 Hz). It skips ACT inference
 and the preceding trajectory. The arm moves to that pose on startup using the
 existing gradual return routine, then holds. **h** releases torque and starts
 recording your manual finish. **f** saves a successful correction and immediately
@@ -24,7 +24,7 @@ current pose.
 
 Only manual motion between **h** and **f** is recorded; positioning, return
 motion and waiting are excluded. Saved metadata includes the source run,
-source snapshot, executed step and correction pose. Corrections remain on the
+source report, executed step and correction pose. Corrections remain on the
 Pi in `act/data`. This moves to a pose, not through the final action chunk, and
 cannot recreate the scene or put an object in the gripper automatically.
 
@@ -34,13 +34,14 @@ Choose a particular existing run:
 bash act/scripts/demo-and-correct.sh --source-run act/outputs/correction-demo-20261011-120002-062436
 ```
 
-That completed 342-step attempt supplies its measured **step-300** pose, entering
-the final 42 actions. Faulted runs are excluded from automatic selection.
-An explicitly supplied source uses its last non-finished snapshot.
+That completed 342-step attempt supplies its measured **step-322** pose from
+`movement-report.json`, leaving 20 actions for manual completion. Change the
+offset with `--steps-before-end 50`, for example. Faulted runs are excluded from
+automatic selection. The selected pose may already be after release or during
+withdrawal; the offset does not detect task phases.
 
 To collect from a fresh policy attempt instead, use **--run-act**. This runs
-342 steps by default (50 fewer than 392), then uses that run's final-chunk entry
-pose for repeated corrections. `--steps`, `--checkpoint` and `--output` apply to
+342 steps by default (50 fewer than 392), then uses that run's pose 20 steps before the end for repeated corrections. `--steps`, `--checkpoint` and `--output` apply to
 this fresh-run mode; `--host` applies to both modes. Failed/interrupted fresh
 runs do not open the correction recorder. No model is loaded in the default mode.
 
@@ -115,3 +116,7 @@ and the full handover remain **REQUIRES_HARDWARE_TEST**.
 2026-10-11 repeated-correction update: saved final-chunk pose selection,
 startup positioning and return after saving passed software tests. No physical
 motion was executed for this update; **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 near-end selection: default offset is 20 motor steps, using saved
+per-step measured feedback rather than 50-step chunk snapshots. Software tests
+passed; new positioning remains **REQUIRES_HARDWARE_TEST**.

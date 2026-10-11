@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Start repeatable corrections from a saved final-chunk pose, without rerunning ACT."""
+"""Start repeatable corrections from a saved near-end pose, without rerunning ACT."""
 import argparse
 import json
 from datetime import datetime
@@ -11,14 +11,17 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def saved_chunk_pose(directory):
-    """Use measured feedback entering the final chunk, never a predicted goal."""
-    states = [(path, json.loads(path.read_text())) for path in directory.glob('*-state.json')]
-    path, state = max(((path, state) for path, state in states if not state.get('finished')),
-                      key=lambda item: item[1]['executed_steps'])
-    return dict(state_ticks=state['state_ticks'], joint_names=state['joint_names'],
-                source_run=directory.name, source_state=path.name,
-                executed_steps=state['executed_steps'])
+def saved_chunk_pose(directory, steps_before_end=20):
+    """Select measured feedback N motor steps before the saved run ended."""
+    report_path = directory / 'movement-report.json'
+    commands = json.loads(report_path.read_text())['commands']
+    steps = max(0, len(commands) - steps_before_end)
+    states = [json.loads(path.read_text()) for path in directory.glob('*-state.json')]
+    initial = min(states, key=lambda state: state['executed_steps'])
+    ticks = commands[steps-1]['measured_ticks'] if steps else initial['state_ticks']
+    return dict(state_ticks=ticks, joint_names=initial['joint_names'],
+                source_run=directory.name, source_state=report_path.name,
+                executed_steps=steps, steps_before_end=steps_before_end)
 
 
 def latest_completed_run():
@@ -39,9 +42,13 @@ def main():
     parser.add_argument('--steps', type=int, default=342,
                         help='Policy motor steps before manual handover (default: 342, reduced from 392)')
     parser.add_argument('--source-run', type=Path, help='Existing PC policy output directory')
+    parser.add_argument('--steps-before-end', type=int, default=20,
+                        help='Correction pose this many motor steps before the end (default: 20)')
     parser.add_argument('--run-act', action='store_true',
                         help='Run a fresh ACT attempt before corrections instead of skipping it')
     args = parser.parse_args()
+    if args.steps_before_end < 0:
+        parser.error('--steps-before-end must be zero or greater')
     if not sys.stdin.isatty():
         parser.error('Run from an interactive PC terminal for hand-guided correction keys')
     if args.run_act:
@@ -52,7 +59,7 @@ def main():
         source = args.output
     else:
         source = args.source_run or latest_completed_run()
-    pose = saved_chunk_pose(source)
+    pose = saved_chunk_pose(source, args.steps_before_end)
     pose_file = source / 'correction-start-pose.json'
     pose_file.write_text(json.dumps(pose, indent=2)+'\n')
     remote_pose = 'act/data/correction-start-pose.json'
