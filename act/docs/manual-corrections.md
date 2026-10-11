@@ -76,3 +76,17 @@ reset procedure and online robot training. See [HIL-SERL](https://hil-serl.githu
 and [interactive imitation learning](https://arxiv.org/abs/2402.17768).
 
 Status: software checks only; **REQUIRES_HARDWARE_TEST** for hand-guided collection.
+
+If a servo reports a fault during the ACT run, the combined command stops before
+opening corrections. The policy endpoint reports its servo ID, joint name and
+SDK error description, saves the original error in `movement-report.json`, and
+closes cameras/serial without further motor commands or torque changes during
+cleanup. A faulted motor's actual torque state is not assumed. Status 32 means
+overload, not serial communication loss; the motor fault must be resolved before
+another autonomous attempt.
+
+2026-10-11 fault investigation: the shortened attempt executed 250 steps before
+snapshot feedback failed. A subsequent read-only inspection found status 32 on
+servo 6 (`gripper`), status 0 on servos 1–5. No motion or torque commands were sent
+for this inspection. Fault reporting and cleanup passed mocked tests; recovery
+and the full handover remain **REQUIRES_HARDWARE_TEST**.
