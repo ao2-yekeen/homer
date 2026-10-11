@@ -4,7 +4,7 @@ Use the current ACT checkpoint to reach the late placement state, then record
 only successful human recoveries. This extends the existing imitation-learning
 dataset; it does not run reinforcement learning or automatically retrain ACT.
 
-## Run the demo and automatically start corrections
+## Repeat corrections without rerunning ACT
 
 From the PC repository terminal:
 
@@ -12,19 +12,37 @@ From the PC repository terminal:
 bash act/scripts/demo-and-correct.sh
 ```
 
-This uses `act/outputs/kaggle-trained/policy`, returns to the saved initial pose
-through the existing policy runner, executes **342 motor steps** (50 fewer than
-the previous 392), then opens the correction recorder in the same terminal.
-The arm holds until you support it and press **h**. The policy run name is
-automatically saved in the correction metadata. Corrections stay on the Pi in
-`act/data`; policy diagnostics are saved on the PC in `act/outputs/correction-demo-*`.
-The existing standalone `run_policy.py` retains its own default; this shortened
-default applies to `demo-and-correct.sh`.
+The command selects the most recently saved **completed** policy run and uses
+its measured joint pose entering the final action chunk. It skips ACT inference
+and the preceding trajectory. The arm moves to that pose on startup using the
+existing gradual return routine, then holds. **h** releases torque and starts
+recording your manual finish. **f** saves a successful correction and immediately
+returns to the same correction pose, powered and holding. Reset the object and
+container to match that pose before pressing **h** again. **q/x** cancels a return;
+**q** exits the recorder. A discarded correction (**d**) leaves torque off at the
+current pose.
 
-Pass `--steps N` to choose an earlier handover, or `--checkpoint PATH`,
-`--output PATH`, and `--host HOST` to override the defaults. A failed or
-interrupted policy process does not automatically launch correction recording.
-The transition is based on step count, not automatic detection of task failure.
+Only manual motion between **h** and **f** is recorded; positioning, return
+motion and waiting are excluded. Saved metadata includes the source run,
+source snapshot, executed step and correction pose. Corrections remain on the
+Pi in `act/data`. This moves to a pose, not through the final action chunk, and
+cannot recreate the scene or put an object in the gripper automatically.
+
+Choose a particular existing run:
+
+```bash
+bash act/scripts/demo-and-correct.sh --source-run act/outputs/correction-demo-20261011-120002-062436
+```
+
+That completed 342-step attempt supplies its measured **step-300** pose, entering
+the final 42 actions. Faulted runs are excluded from automatic selection.
+An explicitly supplied source uses its last non-finished snapshot.
+
+To collect from a fresh policy attempt instead, use **--run-act**. This runs
+342 steps by default (50 fewer than 392), then uses that run's final-chunk entry
+pose for repeated corrections. `--steps`, `--checkpoint` and `--output` apply to
+this fresh-run mode; `--host` applies to both modes. Failed/interrupted fresh
+runs do not open the correction recorder. No model is loaded in the default mode.
 
 ## Start corrections after a separately run demo
 
@@ -46,10 +64,13 @@ JPEG images and gzip joint samples in `act/data/episode-*`. Successful episodes
 use the existing training format and are marked `assistance.mode=manual-correction`.
 Use `--source-run observed-demo-...` to associate them with an autonomous run.
 The autonomous approach, failed actions and the wait before **h** are excluded.
-There is no joystick, saved-start-pose return or replay in this script.
+Without `--start-pose`, this direct command records from the current pose and
+does not return automatically. There is no joystick.
 
-Before **h**, the recorder leaves torque unchanged. Afterwards torque remains
-off, including on exit/Ctrl+C. Keep supporting the arm as needed. Controllers
+In current-pose mode, torque stays unchanged until **h**, then stays off. In
+saved-pose mode, successful returns hold with torque on until **h**. Exit while
+waiting preserves the current torque state; stopping during a return uses the
+existing return routine to release torque. Keep supporting the arm as needed. Controllers
 remain stopped after exit, as with the existing demo recorder.
 
 Start with a small batch of about ten successful recoveries across the actual
@@ -90,3 +111,7 @@ snapshot feedback failed. A subsequent read-only inspection found status 32 on
 servo 6 (`gripper`), status 0 on servos 1–5. No motion or torque commands were sent
 for this inspection. Fault reporting and cleanup passed mocked tests; recovery
 and the full handover remain **REQUIRES_HARDWARE_TEST**.
+
+2026-10-11 repeated-correction update: saved final-chunk pose selection,
+startup positioning and return after saving passed software tests. No physical
+motion was executed for this update; **REQUIRES_HARDWARE_TEST**.

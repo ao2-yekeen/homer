@@ -33,7 +33,7 @@ class Camera:
 
 
 class CorrectionTests(unittest.TestCase):
-    def run_keys(self, keys, failure=None):
+    def run_keys(self, keys, failure=None, start_pose=None):
         packet = Packet()
         cfg = dict(servo_ids=list(range(1, 7)), joint_names=[str(i) for i in range(6)], fps=10)
         keys = iter(keys)
@@ -47,9 +47,9 @@ class CorrectionTests(unittest.TestCase):
             cameras = [('wrist', Camera()), ('overview', Camera())]
             if failure:
                 with self.assertRaises(failure):
-                    correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run')
+                    correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose)
             else:
-                correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run')
+                correction.record_loop(cfg, packet, 40, cameras, poll, Path(tmp), 'test-run', start_pose)
             results = []
             for directory in Path(tmp).glob('episode-*'):
                 metadata = json.loads((directory / 'metadata.json').read_text())
@@ -60,6 +60,22 @@ class CorrectionTests(unittest.TestCase):
                     self.assertTrue((directory / row['overview_image']).is_file())
                 results.append((metadata, rows))
             return packet.writes, results
+
+    def test_saved_pose_returns_on_start_and_after_success_outside_recording(self):
+        pose = dict(state_ticks=[2100]*6, source_run='test-run')
+        with patch.object(correction, 'return_to_pose', return_value=-1) as move:
+            _, [(metadata, rows)] = self.run_keys(['h', -1, 'f', 'q'], start_pose=pose)
+        self.assertEqual(move.call_count, 2)
+        self.assertEqual(metadata['correction_start_pose'], pose)
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(all(call.kwargs['keep_powered'] for call in move.call_args_list))
+
+    def test_cancel_initial_move_never_starts_recording(self):
+        with patch.object(correction, 'return_to_pose', return_value=ord('q')) as move:
+            writes, results = self.run_keys([], start_pose=dict(state_ticks=[2100]*6))
+        self.assertEqual(move.call_count, 1)
+        self.assertEqual(writes, [])
+        self.assertEqual(results, [])
 
     def test_waiting_and_exit_do_not_write_servos_or_save_data(self):
         writes, results = self.run_keys([-1, -1, 'q'])

@@ -16,5 +16,5 @@ for service in soarm-bridge.path soarm-bridge robot-teleop rgb-object-detection 
     systemctl --user stop "$service"
   fi
 done
-echo 'Controllers remain stopped after exit. No return or replay; torque changes only on h.'
+echo 'Controllers remain stopped after exit. Saved-pose mode returns on startup and after saving; h releases torque for recording.'
 exec python3 "$ACT_DIR/runtime/record_correction.py" "$@"

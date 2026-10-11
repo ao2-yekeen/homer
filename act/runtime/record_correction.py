@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Record a hand-guided recovery from the current pose, without replay or return."""
+"""Record hand-guided corrections, optionally returning to a saved late-action pose."""
 import argparse
 import gzip
 import json
@@ -14,7 +14,7 @@ import tty
 import cv2
 import yaml
 
-from record import ROOT, open_arm, read_positions, set_torque
+from record import ROOT, open_arm, read_positions, return_to_pose, set_torque
 
 
 class CorrectionEpisode:
@@ -61,10 +61,16 @@ class CorrectionEpisode:
         print(f'{outcome}: {self.directory} ({self.count} samples, {rate} FPS)', flush=True)
 
 
-def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_run):
+def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_run,
+                start_pose=None):
     episode = None
     deadline = time.monotonic()
-    print('CURRENT POSE: support the arm, then h releases torque and starts recording. '
+    if start_pose is not None:
+        print('Moving to saved correction pose (q/x cancels).', flush=True)
+        if return_to_pose(packet, torque_register, cfg, start_pose['state_ticks'],
+                          poll_key, keep_powered=True) != -1:
+            return
+    print('READY: support the arm, then h releases torque and starts recording. '
           'f = successful placement/release; d = discard; q = quit.', flush=True)
     try:
         while True:
@@ -76,14 +82,24 @@ def record_loop(cfg, packet, torque_register, cameras, poll_key, output, source_
                 ticks, _, stamp = read_positions(packet, cfg)
                 episode = CorrectionEpisode(output / f'episode-{time.time_ns()}', cfg,
                                             ticks, stamp, source_run)
+                if start_pose is not None:
+                    episode.metadata['correction_start_pose'] = start_pose
                 print('RECORDING CORRECTION: torque OFF. Guide into the container, '
                       'release and withdraw; f saves success.', flush=True)
             elif key in (ord('f'), ord('d')) and episode is not None:
                 saved = episode
                 episode = None
                 saved.finish('success' if key == ord('f') and saved.count > 1 else 'discard')
-                print('Torque remains OFF. q exits; h starts another correction '
-                      'from the current pose.', flush=True)
+                if saved.metadata['outcome'] == 'success' and start_pose is not None:
+                    print('SAVED. Returning to correction pose (q/x cancels).', flush=True)
+                    if return_to_pose(packet, torque_register, cfg, start_pose['state_ticks'],
+                                      poll_key, keep_powered=True) != -1:
+                        break
+                    deadline = time.monotonic()
+                    print('HOLDING. Reset the object; support the arm, then h records again.',
+                          flush=True)
+                else:
+                    print('Torque OFF. q exits; h records from the current pose.', flush=True)
 
             # Drain both streams while waiting as well, so recording starts
             # with current images rather than a queued pre-intervention scene.
@@ -120,7 +136,10 @@ def main():
     parser.add_argument('--config', type=Path, default=ROOT / 'config/rig.local.yaml')
     parser.add_argument('--output', type=Path, default=ROOT / 'data')
     parser.add_argument('--source-run', help='Policy run name for correction provenance')
+    parser.add_argument('--start-pose', type=Path,
+                        help='Saved state JSON: move here on startup and after each success')
     args = parser.parse_args()
+    start_pose = json.loads(args.start_pose.read_text()) if args.start_pose else None
     if not sys.stdin.isatty():
         parser.error('Use an interactive terminal: ssh -t pi')
     cfg = yaml.safe_load(args.config.read_text())
@@ -148,7 +167,7 @@ def main():
         def poll_key():
             return os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
 
-        record_loop(cfg, packet, torque_register, cameras, poll_key, args.output, args.source_run)
+        record_loop(cfg, packet, torque_register, cameras, poll_key, args.output, args.source_run, start_pose)
     except KeyboardInterrupt:
         print('\nStopped. Torque state unchanged; no automatic return.', flush=True)
     finally:
