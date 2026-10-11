@@ -16,11 +16,11 @@ import cv2
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
-RETURN_MAX_STEP_TICKS = 20
+RETURN_MAX_STEP_TICKS = 50
 RETURN_STEP_INTERVAL_S = 0.05
-RETURN_SETTLE_TOLERANCE_TICKS = 12
+RETURN_MOTOR_SPEED = 1000
+RETURN_MOTOR_ACCELERATION = 50
 START_RECORD_TOLERANCE_TICKS = 30
-RETURN_SETTLE_TIMEOUT_S = 20
 
 
 def checked(result):
@@ -75,24 +75,35 @@ def set_torque(packet, torque_register, servo_ids, enabled):
                 f'expected {expected}, got {actual}')
 
 
-def return_to_pose(packet, torque_register, cfg, target_ticks, poll_key):
-    """Return slowly to the saved pose, then always release torque for guidance."""
+def return_to_pose(packet, torque_register, cfg, target_ticks, poll_key, keep_powered=False):
+    """Return to start; keep a successful joystick return powered, release on errors."""
     servo_ids = cfg['servo_ids']
     current, _, _ = read_positions(packet, cfg)
     if len(target_ticks) != len(servo_ids) or any(not 0 <= v <= 4095 for v in target_ticks):
         raise RuntimeError('Saved start pose is invalid')
 
+    # Manual guidance can place a joint outside its programmed position limits.
+    # Clamp the initial hold command, but do not refuse the return over limits.
+    return_start = []
+    for servo_id, actual in zip(servo_ids, current):
+        minimum = checked(packet.read2ByteTxRx(servo_id, 9))[0]
+        maximum = checked(packet.read2ByteTxRx(servo_id, 11))[0]
+        # Start at the nearest legal goal, then move toward the saved pose.
+        return_start.append(min(max(actual, minimum), maximum))
+
     torque_enabled = False
+    completed = False
     cancel_key = -1
     try:
         # Replace any stale goals before enabling torque so the arm initially
         # holds where it is now rather than jumping to an older servo goal.
-        for servo_id, position in zip(servo_ids, current):
-            checked(packet.WritePosEx(servo_id, position, 25, 5))
+        for servo_id, position in zip(servo_ids, return_start):
+            checked(packet.WritePosEx(servo_id, position,
+                                      RETURN_MOTOR_SPEED, RETURN_MOTOR_ACCELERATION))
         torque_enabled = True
         set_torque(packet, torque_register, servo_ids, True)
 
-        max_delta = max(abs(dst - src) for src, dst in zip(current, target_ticks))
+        max_delta = max(abs(dst - src) for src, dst in zip(return_start, target_ticks))
         steps = max(1, (max_delta + RETURN_MAX_STEP_TICKS - 1) // RETURN_MAX_STEP_TICKS)
         last_report = time.monotonic()
         for step in range(1, steps + 1):
@@ -101,31 +112,21 @@ def return_to_pose(packet, torque_register, cfg, target_ticks, poll_key):
                 cancel_key = key
                 break
             targets = [round(src + (dst - src) * step / steps)
-                       for src, dst in zip(current, target_ticks)]
+                       for src, dst in zip(return_start, target_ticks)]
             for servo_id, target in zip(servo_ids, targets):
-                checked(packet.WritePosEx(servo_id, target, 25, 5))
+                checked(packet.WritePosEx(servo_id, target,
+                                          RETURN_MOTOR_SPEED, RETURN_MOTOR_ACCELERATION))
             if time.monotonic() - last_report >= 1:
                 print(f'RETURNING TO START: step {step}/{steps}', flush=True)
                 last_report = time.monotonic()
             time.sleep(RETURN_STEP_INTERVAL_S)
 
-        if cancel_key == -1:
-            deadline = time.monotonic() + RETURN_SETTLE_TIMEOUT_S
-            while time.monotonic() < deadline:
-                key = poll_key()
-                if key in (ord('q'), ord('x')):
-                    cancel_key = key
-                    break
-                measured, _, _ = read_positions(packet, cfg)
-                if all(abs(actual - target) <= RETURN_SETTLE_TOLERANCE_TICKS
-                       for actual, target in zip(measured, target_ticks)):
-                    break
-                time.sleep(RETURN_STEP_INTERVAL_S)
-            else:
-                raise RuntimeError(f'Arm did not reach saved start pose: target={target_ticks}')
+        completed = cancel_key == -1
+        if completed:
+            print('START POSE COMMANDS SENT.', flush=True)
         return cancel_key
     finally:
-        if torque_enabled:
+        if torque_enabled and (not keep_powered or not completed):
             set_torque(packet, torque_register, servo_ids, False)
 
 
