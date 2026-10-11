@@ -84,3 +84,18 @@ for resuming. These errors measure joint prediction, not placement success.
 Before replacing the deployed model, compare original versus fine-tuned policies
 on repeatable placement trials. Retaining the raw dataset also permits a
 trimmed-versus-untrimmed comparison if hesitation or contact timing worsens.
+
+## One-command package for a friend
+
+Build the standalone ZIP after preparation:
+
+```bash
+python3 act/training/package_corrections.py
+```
+
+Send `act/outputs/act-correction-training.zip`. After extraction, run
+`bash start.sh` on Linux or `.\start.bat` on Windows from inside the extracted
+`act-correction-training` folder. The launcher installs local Python and GPU
+dependencies, fine-tunes the included Kaggle checkpoint for 2,000 steps, resumes
+interrupted runs automatically, and produces `act-trained-results.zip` to send
+back. No repository checkout is needed.
