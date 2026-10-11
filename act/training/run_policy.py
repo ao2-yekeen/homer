@@ -54,6 +54,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--host', default='pi')
     parser.add_argument('--steps', type=int, default=392)
+    parser.add_argument('--replan-steps', type=int, default=5,
+                        help='Actions to execute before taking fresh images (default: 5)')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     policy = SnapshotPolicy(args.checkpoint)
@@ -87,6 +89,7 @@ def main():
                 for image in images.values():
                     image.close()
             (args.output / f'{chunk:03d}-prediction.json').write_text(json.dumps(prediction, indent=2)+'\n')
+            prediction['actions'] = prediction['actions'][:args.replan_steps]
             print(f'Chunk {chunk+1}: {snapshot["executed_steps"]}/{args.steps} steps executed; '
                   f'joints={snapshot["state_ticks"]}; inference={prediction["inference_seconds"]:.2f}s', flush=True)
             process.stdin.write(json.dumps(prediction)+'\n')
