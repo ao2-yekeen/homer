@@ -37,7 +37,7 @@ def latest_completed_run():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--checkpoint', type=Path, default=ROOT / 'outputs/kaggle-trained/policy')
+    parser.add_argument('--checkpoint', type=Path, default=ROOT / 'outputs/kaggle-corrections-trained/policy')
     parser.add_argument('--output', type=Path,
                         default=ROOT / 'outputs' / datetime.now().strftime('correction-demo-%Y%m%d-%H%M%S-%f'))
     parser.add_argument('--host', default='pi')

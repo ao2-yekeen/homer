@@ -6,6 +6,13 @@ dataset; it does not run reinforcement learning or automatically retrain ACT.
 
 ## Fresh predictions for every demo
 
+The default checkpoint is `act/outputs/kaggle-corrections-trained/policy`,
+fine-tuned with the hand corrections (best checkpoint at step 1,400).
+For an autonomous demo without opening the correction recorder, run
+`bash act/scripts/demo.sh` from the PC. This runs 342 motor steps and holds
+the final position. Inference runs on the PC; cameras and motors run on the Pi.
+Physical placement with this checkpoint remains **REQUIRES_HARDWARE_TEST**.
+
 Run from the PC repository terminal:
 
 ```bash
