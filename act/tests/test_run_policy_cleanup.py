@@ -15,11 +15,17 @@ with patch.dict(sys.modules, {'predict_snapshot': MagicMock()}):
 
 
 class CleanupTests(unittest.TestCase):
-    def test_runner_replans_from_fresh_observation_after_five_actions(self):
+    def test_runner_replans_from_fresh_observation_after_selected_interval(self):
+        self.check_runner_interval(5, ['--replan-steps', '5'])
+
+    def test_default_executes_full_chunk_so_startup_can_progress(self):
+        self.check_runner_interval(50, [])
+
+    def check_runner_interval(self, interval, extra_args):
         process = MagicMock()
         snapshots = [dict(images={'wrist': 'eA==', 'overview': 'eA=='},
-                          state_ticks=[i] * 6, executed_steps=i, finished=i == 10)
-                     for i in (0, 5, 10)]
+                          state_ticks=[i] * 6, executed_steps=i, finished=i == 2 * interval)
+                     for i in (0, interval, 2 * interval)]
         process.stdout = iter(json.dumps(s) + '\n' for s in snapshots)
         policy = MagicMock()
         policy.predict.side_effect = [dict(actions=[[i] * 6 for i in range(50)],
@@ -27,7 +33,7 @@ class CleanupTests(unittest.TestCase):
                                            inference_seconds=0.2) for _ in range(2)]
         with tempfile.TemporaryDirectory() as directory:
             with patch.object(sys, 'argv', ['run_policy.py', '--checkpoint', directory,
-                                           '--output', directory, '--steps', '10']), \
+                                           '--output', directory, '--steps', str(2 * interval)] + extra_args), \
                     patch.object(runner, 'SnapshotPolicy', return_value=policy), \
                     patch.object(runner.subprocess, 'run'), \
                     patch.object(runner.subprocess, 'Popen', return_value=process), \
@@ -36,10 +42,10 @@ class CleanupTests(unittest.TestCase):
                 runner.main()
             self.assertEqual(policy.predict.call_count, 2)
             self.assertEqual([c.args[0] for c in policy.predict.call_args_list],
-                             [[0] * 6, [5] * 6])
+                             [[0] * 6, [interval] * 6])
             sent = [json.loads(c.args[0]) for c in process.stdin.write.call_args_list]
-            self.assertEqual([len(p['actions']) for p in sent], [5, 5])
-            self.assertEqual(sent[0]['actions'], [[i] * 6 for i in range(5)])
+            self.assertEqual([len(p['actions']) for p in sent], [interval, interval])
+            self.assertEqual(sent[0]['actions'], [[i] * 6 for i in range(interval)])
             saved = json.loads((Path(directory) / '000-prediction.json').read_text())
             self.assertEqual(len(saved['actions']), 50)
 

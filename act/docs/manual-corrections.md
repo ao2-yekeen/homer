@@ -164,11 +164,11 @@ that closing PC input terminated a simulated blocked endpoint (exit 130) and
 left no endpoint process. Deployed runtime file hashes match the PC. No serial
 port was opened and no physical motion or torque commands were sent.
 
-2026-10-11 visual feedback update: `bash act/scripts/demo.sh` now executes only
-the first five actions from each prediction, then takes fresh camera images and
-predicts again. At 10 Hz that is 0.5 seconds of movement per observation, plus
-camera, network and inference time. The checkpoint and 342-action demo length
-are unchanged. Full 50-action predictions remain saved for inspection.
-`--replan-steps 50` restores the previous execution interval. Ctrl+C still
-requests return to the saved start pose. Software verification only;
-**REQUIRES_HARDWARE_TEST** for adaptation to changed object/container positions.
+2026-10-11 visual feedback experiment: executing only the first five predicted
+actions caused startup stagnation in `demo-20261011-155137`. All 342 commands
+were sent, but repeated predictions kept the arm near its start pose. Later
+actions in each chunk contained the approach movement and were discarded.
+The default is restored to 50 actions per observation. `--replan-steps` remains
+available for explicit experiments; five-action replanning is not a validated
+fix for this checkpoint. Full predictions remain saved. Ctrl+C still requests
+return to the saved start pose. Accurate grasp/placement remains unresolved.

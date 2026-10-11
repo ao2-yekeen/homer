@@ -54,8 +54,8 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--host', default='pi')
     parser.add_argument('--steps', type=int, default=392)
-    parser.add_argument('--replan-steps', type=int, default=5,
-                        help='Actions to execute before taking fresh images (default: 5)')
+    parser.add_argument('--replan-steps', type=int, default=50,
+                        help='Actions to execute before taking fresh images (default: 50)')
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     policy = SnapshotPolicy(args.checkpoint)
