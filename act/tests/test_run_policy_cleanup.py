@@ -13,6 +13,15 @@ with patch.dict(sys.modules, {'predict_snapshot': MagicMock()}):
 
 
 class CleanupTests(unittest.TestCase):
+    def test_interrupt_sends_return_and_waits_before_closing_input(self):
+        process = MagicMock()
+        process.wait.return_value = 130
+        with patch.object(runner.threading, 'Thread'):
+            self.assertEqual(runner.close_session(process, return_to_start=True), 130)
+        self.assertEqual(process.mock_calls, [
+            call.stdin.write('{"return_to_start": true}\n'), call.stdin.flush(),
+            call.wait(timeout=30), call.stdin.close()])
+
     def test_input_closes_before_wait(self):
         process = MagicMock()
         process.wait.return_value = 0

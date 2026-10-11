@@ -11,6 +11,10 @@ fine-tuned with the hand corrections (best checkpoint at step 1,400).
 For an autonomous demo without opening the correction recorder, run
 `bash act/scripts/demo.sh` from the PC. This runs 342 motor steps and holds
 the final position. Inference runs on the PC; cameras and motors run on the Pi.
+Press **Ctrl+C** during ACT execution to stop predictions and return the arm
+to `act/data/session-start-pose.json`, holding with torque on afterwards.
+Keep the terminal open while it returns. An abrupt network disconnect or a
+servo fault still closes the connection without automatic recovery motion.
 Physical placement with this checkpoint remains **REQUIRES_HARDWARE_TEST**.
 
 Run from the PC repository terminal:

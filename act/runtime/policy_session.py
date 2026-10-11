@@ -4,6 +4,7 @@ import argparse
 import base64
 import contextlib
 import json
+import select
 from pathlib import Path
 import sys
 import time
@@ -46,6 +47,7 @@ def main(connection_finished=lambda: None):
     cfg = yaml.safe_load(args.config.read_text())
     args.output.mkdir(parents=True, exist_ok=True)
     port = lock = None
+    start = None
     cameras = {}
     report = dict(commands=[], requested_steps=args.steps, completed=False)
 
@@ -93,6 +95,8 @@ def main(connection_finished=lambda: None):
             if not line:
                 break
             prediction = json.loads(line)
+            if prediction.get('return_to_start'):
+                raise KeyboardInterrupt
             if prediction.get('stop'):
                 break
             if prediction['joint_names'] != cfg['joint_names']:
@@ -103,6 +107,10 @@ def main(connection_finished=lambda: None):
                 raise ValueError('Empty action chunk')
             deadline = time.monotonic()
             for raw, target in zip(raw_actions, targets):
+                if select.select([sys.stdin], [], [], 0)[0]:
+                    control = sys.stdin.readline()
+                    if control and json.loads(control).get('return_to_start'):
+                        raise KeyboardInterrupt
                 write_targets(packet, cfg['servo_ids'], target)
                 deadline += 1 / cfg['fps']
                 time.sleep(max(0, deadline-time.monotonic()))
@@ -122,6 +130,22 @@ def main(connection_finished=lambda: None):
         # normal completion cannot interrupt report/camera/serial cleanup.
         connection_finished()
         print(json.dumps(final), flush=True)
+    except KeyboardInterrupt:
+        report.update(completed=False, interrupted=True)
+        if port is not None and start is not None:
+            print('Interrupted: returning to saved start pose.', file=sys.stderr, flush=True)
+            try:
+                with contextlib.redirect_stdout(sys.stderr):
+                    return_to_pose(packet, torque_register, cfg, start, lambda: -1,
+                                   keep_powered=True)
+                report['returned_to_start'] = True
+                print('Start pose commands sent; arm holding.', file=sys.stderr, flush=True)
+            except BaseException as exc:
+                report['error'] = str(exc)
+                print(f'Return to start failed: {exc}', file=sys.stderr, flush=True)
+                raise
+        connection_finished()
+        raise SystemExit(130)
     except BaseException as exc:
         report.update(completed=False, error=str(exc))
         print(f'ACT stopped: {exc}. No further motor commands sent; '
