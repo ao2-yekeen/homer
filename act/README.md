@@ -31,10 +31,16 @@ positions and torque states. The recorder will not start unless torque is off.
 Keep the arm supported whenever torque is released; do not restart the arm
 bridge during collection because an old goal can move the servos.
 
-## Manual hand-guiding workflow
+## Manual hand-guiding attempt
 
-The current workflow first teaches an approach, then records demos that replay
-that approach before the hand-guided final alignment and grasp:
+The attempt to guide the arm by hand did not work, so no successful hand-guided
+demonstration was collected. The scripts below describe the intended recording
+flow; they do not make the arm mechanically back-drivable or prove that this
+setup can be guided. The available notes do not identify why the attempt failed.
+Resolve that hardware issue before trying to collect demos.
+
+If hand guidance becomes workable, the intended flow is to teach an approach,
+then record demos that replay it before a hand-guided final alignment and grasp:
 
 1. Run `bash act/scripts/record-approach.sh`. Press `s` to return to the saved
    start pose and begin recording. Torque is on only during that return; with
@@ -57,11 +63,11 @@ For full hand-guided recording without an approach replay, see
 
 A live Pi check read all six servos with torque off and captured both 640×480
 camera streams. Continuous recording saved samples at about 10 Hz, and video
-and joint-plot review worked. Those test episodes were discarded: they verified
-sensor capture, not a successful hand-guided grasp. A return-to-start smoke test
-began with the arm already at its saved pose, so travel from another pose was
-not tested. Supported hand guidance, manual gripper operation, and a complete
-pick-and-place still need supervised hardware validation; see
+and joint-plot review worked. Those test episodes were discarded; they establish
+that sensing and logging work, not that hand guidance works. A return-to-start
+smoke test began with the arm already at its saved pose, so travel from another
+pose was not tested. Hand-guiding, manual gripper operation, and a complete
+pick-and-place remain unresolved hardware problems; see
 [collection test notes](docs/collection-test.md).
 
 ## Training and layout
