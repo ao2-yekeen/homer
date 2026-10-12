@@ -60,6 +60,38 @@ platform.
 | Simulation | PyBullet robot and workspace/LiDAR experiments | [`simulation/`](simulation/) |
 | Documentation | ROS graph, calibration, controls, evidence | [`docs/`](docs/) |
 
+## Bill of Materials (BOM)
+
+| Component | Qty | Cost | Link |
+|---|---:|---:|---|
+| FEETECH SO-ARM101 | 1 | £93.24 | [GitHub](https://github.com/TheRobotStudio/SO-ARM100) |
+| RPLidar A1M8 | 1 | £93.00 | [RobotShop](https://uk.robotshop.com/products/rplidar-a1m8-360-degree-laser-scanner-development-kit) |
+| Arducam ToF Camera | 1 | £51.50 | [Pi Hut](https://thepihut.com/products/time-of-flight-camera-for-raspberry-pi) |
+| BNO085 IMU | 1 | £20.90 | [Amazon](https://www.amazon.co.uk/dp/B0GXZNT84M) |
+| Waveshare Servo Driver | 1 | £9.99 | [Amazon](https://www.amazon.co.uk/dp/B0CJ6TP3TP) |
+| TurtleBot Waffle PCB Plates | 5 | £5.55 | [JLCPCB](https://jlcpcb.com/) |
+| Reused motors, wheels and sensors | Mixed | £23.29 | [Pi Hut](https://thepihut.com/) |
+| DC Buck Converter | 1 | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B07DK6WN63) |
+| Motor Driver | 1 | £6.81 | — |
+| Caster Wheels | 4 | £2.99 | [Amazon](https://www.amazon.co.uk/dp/B0GH2LKD9Q) |
+| ESP32 DevKit | 1 | £5.99 | [Amazon](https://www.amazon.co.uk/dp/B0CJHR8SMK) |
+| OV9732 Camera | 1 | £4.32 | — |
+| XT60-JST Cables | 4 | £6.59 | [Amazon](https://www.amazon.co.uk/dp/B0DDC9WM6N) |
+| Silicone Wire | 5 m | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B0G2SL4NGQ) |
+| Battery BMS | 1 | £1.38 | — |
+| **Verified subtotal** | | **£335.53** | |
+
+### Additional Components
+
+| Component | Cost |
+|---|---|
+| Raspberry Pi | TBD |
+| Battery Pack | TBD |
+| Aluminium Extrusion Frame | TBD |
+| Drive Motors and Wheels | TBD |
+| Logitech RGB Camera | TBD |
+| 3D-Printed Parts and Fasteners | TBD |
+
 ## System architecture
 
 See the [architecture diagrams](docs/architecture/README.md) for the Pi boot
