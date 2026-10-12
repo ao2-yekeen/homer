@@ -69,8 +69,7 @@ platform.
 | Arducam ToF Camera | 1 | £51.50 | [Pi Hut](https://thepihut.com/products/time-of-flight-camera-for-raspberry-pi) |
 | BNO085 IMU | 1 | £20.90 | [Amazon](https://www.amazon.co.uk/dp/B0GXZNT84M) |
 | Waveshare Servo Driver | 1 | £9.99 | [Amazon](https://www.amazon.co.uk/dp/B0CJ6TP3TP) |
-| TurtleBot Waffle PCB Plates | 5 | £5.55 | [JLCPCB](https://jlcpcb.com/) |
-| Reused motors, wheels and sensors | Mixed | £23.29 | [Pi Hut](https://thepihut.com/) |
+| Drive motor | 1 | Price not recorded | [Amazon](https://www.amazon.co.uk/dp/B07WRYQZNR) |
 | DC Buck Converter | 1 | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B07DK6WN63) |
 | Motor Driver | 1 | £6.81 | — |
 | Caster Wheels | 4 | £2.99 | [Amazon](https://www.amazon.co.uk/dp/B0GH2LKD9Q) |
@@ -78,19 +77,14 @@ platform.
 | OV9732 Camera | 1 | £4.32 | — |
 | XT60-JST Cables | 4 | £6.59 | [Amazon](https://www.amazon.co.uk/dp/B0DDC9WM6N) |
 | Silicone Wire | 5 m | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B0G2SL4NGQ) |
-| Battery BMS | 1 | £1.38 | — |
-| **Verified subtotal** | | **£335.53** | |
+| Battery pack | 1 | Price not recorded | [Amazon](https://www.amazon.co.uk/dp/B0D3Y3ZRBK) |
+| Raspberry Pi 4 Model B (2 GB, typical new price) | 1 | £50.85 | [DigiKey](https://www.digikey.co.uk/en/product-highlight/r/raspberry-pi/raspberry-pi-4-model-b) |
+| Aluminium extrusion frame | 1 | Free (provided by university) | [Example extrusion](https://www.aluminium-profile.co.uk/aluminium-profile-2020/) |
+| Logitech RGB camera | 1 | Used, bought on eBay; price not recorded | [eBay listings](https://www.ebay.co.uk/sch/i.html?_nkw=Logitech+RGB+webcam) |
+| 3D-printed parts and fasteners | Mixed | Not recorded | — |
+| **Subtotal of recorded costs** | | **£356.16** | |
 
-### Additional Components
-
-| Component | Cost |
-|---|---|
-| Raspberry Pi | TBD |
-| Battery Pack | TBD |
-| Aluminium Extrusion Frame | TBD |
-| Drive Motors and Wheels | TBD |
-| Logitech RGB Camera | TBD |
-| 3D-Printed Parts and Fasteners | TBD |
+The robot runs without a battery management system (BMS), so it is not included.
 
 ## System architecture
 
