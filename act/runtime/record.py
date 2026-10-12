@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Record hand-guided demos after returning the arm to its session start pose."""
+"""Record hand-guided or joystick demos, with optional approach replay."""
 import argparse
 import fcntl
+import gzip
 import json
 import os
 from pathlib import Path
@@ -15,12 +16,13 @@ import time
 import cv2
 import yaml
 
+from trim_handover import trim_handover
+
 ROOT = Path(__file__).resolve().parents[1]
 RETURN_MAX_STEP_TICKS = 50
 RETURN_STEP_INTERVAL_S = 0.05
 RETURN_MOTOR_SPEED = 1000
 RETURN_MOTOR_ACCELERATION = 50
-START_RECORD_TOLERANCE_TICKS = 30
 
 
 def checked(result):
@@ -132,7 +134,7 @@ def return_to_pose(packet, torque_register, cfg, target_ticks, poll_key, keep_po
 
 def open_arm(cfg):
     # Linux serial exclusivity plus a cooperative lock; no fallback to an unknown USB port.
-    for service in ('soarm-bridge', 'robot-teleop'):
+    for service in ('soarm-bridge', 'robot-teleop', 'gamepad-teleop', 'gamepad-arm-test'):
         if subprocess.run(['systemctl', '--user', 'is-active', '--quiet', service],
                           check=False).returncode == 0:
             raise RuntimeError(f'Stop {service}.service before accessing the arm')
@@ -163,7 +165,7 @@ class Episode:
                  recording_start_ticks, return_completed_ns):
         self.directory = directory
         directory.mkdir(parents=True)
-        self.stream = (directory / 'samples.jsonl').open('w')
+        self.stream = gzip.open(directory / 'samples.jsonl.gz', 'wt')
         self.cfg = cfg
         self.start_state_ticks = start_state_ticks
         self.start_state_ns = start_state_ns
@@ -171,25 +173,41 @@ class Episode:
         self.return_completed_ns = return_completed_ns
         self.times = []
         self.count = 0
+        self.approach_end_frame = None
+        self.assistance = None
+        self.joint_only = False
 
     def append(self, frame, overview_frame, ticks, capture_start, capture_end,
-               overview_start, overview_end, read_start, read_end):
+               overview_start, overview_end, read_start, read_end, control=None):
         name = f'{self.count:06d}.jpg'
         # OpenCV encodes BGR as ordinary RGB JPEG; consumers decode to RGB once.
-        if not cv2.imwrite(str(self.directory / name), frame):
+        if not cv2.imwrite(str(self.directory / name), frame,
+                           [cv2.IMWRITE_JPEG_QUALITY, 75]):
             raise RuntimeError('Image write failed')
         row = dict(image=name, state_ticks=ticks, capture_start_ns=capture_start,
                    capture_end_ns=capture_end, read_start_ns=read_start,
                    read_end_ns=read_end)
         overview_name = f'{self.count:06d}-overview.jpg'
-        if not cv2.imwrite(str(self.directory / overview_name), overview_frame):
+        if not cv2.imwrite(str(self.directory / overview_name), overview_frame,
+                           [cv2.IMWRITE_JPEG_QUALITY, 75]):
             raise RuntimeError('Overview image write failed')
         row.update(overview_image=overview_name,
                    overview_capture_start_ns=overview_start,
                    overview_capture_end_ns=overview_end)
+        if control is not None:
+            row['control'] = control
         self.stream.write(json.dumps(row) + '\n')
         self.stream.flush()
         self.times.append(capture_end)
+        self.count += 1
+
+    def append_joint_state(self, ticks, read_start, read_end):
+        """Store a replay-source sample without camera images or camera timing."""
+        row = dict(state_ticks=ticks, read_start_ns=read_start,
+                   read_end_ns=read_end)
+        self.stream.write(json.dumps(row) + '\n')
+        self.stream.flush()
+        self.times.append(read_end)
         self.count += 1
 
     def finish(self, outcome, reason=None):
@@ -201,9 +219,34 @@ class Episode:
                         start_state_ticks=self.start_state_ticks,
                         start_state_timestamp_ns=self.start_state_ns,
                         recording_start_ticks=self.recording_start_ticks,
-                        return_completed_ns=self.return_completed_ns,
-                        image_encoding='JPEG RGB; OpenCV input BGR',
-                        capture_timestamp='Host read interval, not sensor exposure time')
+                        return_completed_ns=self.return_completed_ns)
+        if not self.joint_only:
+            metadata.update(image_encoding='JPEG RGB; OpenCV input BGR',
+                            capture_timestamp='Host read interval, not sensor exposure time')
+        metadata.update(approach_end_frame=self.approach_end_frame,
+                        assistance=self.assistance,
+                        joint_only=self.joint_only)
+        if (outcome == 'success' and not self.joint_only
+                and (self.assistance or {}).get('mode') == 'replay-then-hand'):
+            path = self.directory / 'samples.jsonl.gz'
+            with gzip.open(path, 'rt') as stream:
+                rows = [json.loads(line) for line in stream]
+            rows, metadata, removed = trim_handover(rows, metadata)
+            if removed:
+                temporary = self.directory / 'samples.trimmed.jsonl.gz'
+                with gzip.open(temporary, 'wt') as stream:
+                    for row in rows:
+                        stream.write(json.dumps(row)+'\n')
+                temporary.replace(path)
+                retained_images = {row[field] for row in rows
+                                   for field in ('image', 'overview_image')}
+                for row in removed:
+                    for field in ('image', 'overview_image'):
+                        if row[field] not in retained_images:
+                            (self.directory / row[field]).unlink(missing_ok=True)
+                self.count = len(rows)
+                self.approach_end_frame = metadata['approach_end_frame']
+                print(f'Removed {len(removed)} idle handover frames.', flush=True)
         (self.directory / 'metadata.json').write_text(json.dumps(metadata, indent=2))
         print(f'{outcome}: {self.directory} ({self.count} samples, {rate} FPS)', flush=True)
 
@@ -211,7 +254,10 @@ class Episode:
 def review(directory):
     import numpy as np
     metadata = json.loads((directory / 'metadata.json').read_text())
-    rows = [json.loads(line) for line in (directory / 'samples.jsonl').read_text().splitlines()]
+    path = directory / 'samples.jsonl.gz'
+    stream = gzip.open(path, 'rt') if path.exists() else (directory / 'samples.jsonl').open()
+    with stream:
+        rows = [json.loads(line) for line in stream]
     if len(rows) < 2:
         raise RuntimeError('Need at least two samples for review')
     cfg = metadata['config']
@@ -222,7 +268,7 @@ def review(directory):
     if not writer.isOpened():
         raise RuntimeError('Cannot create review video')
     try:
-        for row in rows:
+        for index, row in enumerate(rows):
             frame = cv2.imread(str(directory / row['image']))
             if frame is None:
                 raise RuntimeError('Missing episode image')
@@ -231,7 +277,7 @@ def review(directory):
                 raise RuntimeError('Missing episode overview image')
             overview = cv2.resize(overview, (cfg['width'], cfg['height']))
             frame = cv2.hconcat([frame, overview])
-            cv2.putText(frame, str(row['state_ticks']), (10, 25),
+            cv2.putText(frame, f"frame {index}: {row['state_ticks']}", (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, .45, (0, 255, 0), 1)
             writer.write(frame)
     finally:
@@ -259,12 +305,35 @@ def main():
     ap.add_argument('--camera-check', action='store_true', help='Save camera sample, no servo access')
     ap.add_argument('--review', type=Path, help='Export episode review video and joint plot without hardware')
     ap.add_argument('--check', action='store_true', help='Read positions/torque only, no servo writes')
+    ap.add_argument('--joystick', action='store_true', help='Record powered joystick demonstrations')
+    ap.add_argument('--approach-source', action='store_true', help='Record a reusable approach and save it when p is pressed')
+    ap.add_argument('--joystick-check', action='store_true', help='Print joystick state for 10 seconds, no arm/camera access')
+    ap.add_argument('--replay', type=Path, help='Successful episode whose approach is replayed before hand guidance')
+    ap.add_argument('--until-frame', type=int, help='Last source frame to replay; default: p marker in source metadata')
+    ap.add_argument('--replay-speed', type=float, default=1., help='Source timing multiplier, 0 < speed <= 1 (default 1)')
     args = ap.parse_args()
     if args.review:
         review(args.review)
         return
     cfg = yaml.safe_load(args.config.read_text())
-    if 'overview_camera' not in cfg:
+    if not 0 < args.replay_speed <= 1:
+        ap.error('--replay-speed must be > 0 and <= 1')
+    if args.until_frame is not None and not args.replay:
+        ap.error('--until-frame requires --replay')
+    if args.replay:
+        args.joystick = False  # Replay ends with torque off for hand guidance.
+    if args.joystick_check:
+        from assisted import XboxJoystick
+        joystick = XboxJoystick(cfg['joystick']['device'])
+        try:
+            print(f'Input-only check: {joystick.name}. Move sticks/D-pad and press R1/B.', flush=True)
+            for _ in range(50):
+                print(joystick.snapshot(), flush=True)
+                time.sleep(.2)
+        finally:
+            joystick.close()
+        return
+    if 'overview_camera' not in cfg and not args.approach_source:
         raise RuntimeError('Configuration must include the Logitech overview_camera')
     if cfg['servo_ids'] != list(range(1, 7)) or len(cfg['joint_names']) != 6:
         raise RuntimeError('Expected six ordered servos 1..6')
@@ -278,9 +347,11 @@ def main():
     port = None
     lock = None
     episode = None
+    assistance = None
+    joystick = None
     terminal_settings = None
     try:
-        if not args.check:
+        if not args.check and not args.approach_source:
             cap = cv2.VideoCapture(cfg['camera'], cv2.CAP_V4L2)
             cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
             cap.set(cv2.CAP_PROP_FRAME_WIDTH, cfg['width'])
@@ -334,13 +405,32 @@ def main():
         if args.check:
             return
         if any(torque):
-            raise RuntimeError('All six joints must be in verified manual torque-off guidance mode')
+            set_torque(packet, torque_register, cfg['servo_ids'], False)
+            print('Startup safety: torque disabled on all six joints.', flush=True)
         session_start_pose, session_start_pose_ns = get_session_start_pose(
             ROOT / 'data' / 'session-start-pose.json', cfg, positions,
             position_read_end)
+        if args.joystick or args.replay:
+            from assisted import XboxJoystick, AssistedControl, read_limits, load_prefix
+            limits = read_limits(packet, cfg, checked)
+            prefix = load_prefix(args.replay, args.until_frame, cfg, limits,
+                                 session_start_pose) if args.replay else None
+            joystick = XboxJoystick(cfg['joystick']['device']) if args.joystick else None
+            assistance = AssistedControl(packet, torque_register, cfg, joystick,
+                                         limits, checked, set_torque, prefix, args.replay_speed)
         print(f'Session start pose loaded: {session_start_pose}', flush=True)
-        print('READY — press s to return to the saved pose, release torque, and start a demo.\n'
-              's=start, f=finish successful episode, d=discard, q=quit; q or x stops a return.', flush=True)
+        if assistance and assistance.prefix:
+            print('READY — press s to return to the INITIAL POSE; recording starts there and the source replays automatically.\n'
+                  'After replay the arm holds position. Support it, then press h to release torque and finish by hand.', flush=True)
+        else:
+            print('READY — press s to return to the saved pose and start a demo.\n'
+                  's=start, f=finish successful episode, d=discard, q=quit; q or x stops a return.', flush=True)
+        if joystick:
+            print('JOYSTICK MODE: torque is enabled only while returning/moving; it is released on exit.\n'
+                  'Hold R1 + sticks/D-pad to move; B pauses; p marks the approach endpoint.\n'
+                  'x aborts and exits; support the arm before x/q releases torque.', flush=True)
+        if args.approach_source:
+            print('APPROACH SOURCE MODE: guide the arm by hand with torque off; p saves through this frame and exits.', flush=True)
         if args.no_preview:
             if not sys.stdin.isatty():
                 raise RuntimeError('Use an interactive terminal: ssh -t pi')
@@ -349,41 +439,77 @@ def main():
         period = 1 / cfg['fps']
         deadline = time.monotonic()
         while True:
-            capture_start = time.monotonic_ns()
-            ok, frame = cap.read()
-            capture_end = time.monotonic_ns()
-            if not ok:
-                raise RuntimeError('Camera disconnected/read failed')
-            if capture_end - capture_start > 200_000_000:
-                raise RuntimeError('Camera read took over 200 ms')
-            overview_start = time.monotonic_ns()
-            overview_ok, overview_frame = overview_cap.read()
-            overview_end = time.monotonic_ns()
-            if not overview_ok:
-                raise RuntimeError('Logitech overview camera disconnected/read failed')
-            if overview_end - overview_start > 200_000_000:
-                raise RuntimeError('Logitech overview camera read took over 200 ms')
+            if assistance and episode:
+                ticks, _, _ = read_positions(packet, cfg)
+                previous_phase = assistance.phase
+                assistance.update(ticks, time.monotonic())
+                if previous_phase not in ('joystick', 'holding', 'hand') and assistance.phase in ('joystick', 'holding', 'hand'):
+                    episode.approach_end_frame = episode.count
+            if not args.approach_source:
+                capture_start = time.monotonic_ns()
+                ok, frame = cap.read()
+                capture_end = time.monotonic_ns()
+                if not ok:
+                    raise RuntimeError('Camera disconnected/read failed')
+                if capture_end - capture_start > 200_000_000:
+                    raise RuntimeError('Camera read took over 200 ms')
+                overview_start = time.monotonic_ns()
+                overview_ok, overview_frame = overview_cap.read()
+                overview_end = time.monotonic_ns()
+                if not overview_ok:
+                    raise RuntimeError('Logitech overview camera disconnected/read failed')
+                if overview_end - overview_start > 200_000_000:
+                    raise RuntimeError('Logitech overview camera read took over 200 ms')
             ticks, read_start, read_end = read_positions(packet, cfg)
             if episode:
-                episode.append(frame, overview_frame, ticks, capture_start,
-                               capture_end, overview_start, overview_end,
-                               read_start, read_end)
+                if args.approach_source:
+                    episode.append_joint_state(ticks, read_start, read_end)
+                else:
+                    episode.append(frame, overview_frame, ticks, capture_start,
+                                   capture_end, overview_start, overview_end,
+                                   read_start, read_end,
+                                   dict(phase=assistance.phase, target_ticks=assistance.target,
+                                        axes=assistance.last_axes) if assistance else None)
                 if args.no_preview and episode.count % max(1, round(cfg['fps'])) == 0:
-                    print(f'RECORDING: {episode.count} samples saved', flush=True)
-            cv2.putText(frame, 'RECORDING' if episode else 's:start f:finish d:discard q:quit',
-                        (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
-            cv2.putText(overview_frame, 'LOGITECH OVERVIEW', (10, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
+                    if assistance:
+                        if assistance.phase == 'holding':
+                            control_status = 'HOLDING; torque ON; support arm then press h'
+                        elif assistance.phase == 'hand':
+                            control_status = 'HAND GUIDANCE; torque off; f saves'
+                        elif assistance.phase not in ('joystick', 'hand'):
+                            control_status = assistance.phase.upper()
+                        elif not assistance.ready:
+                            control_status = 'WAITING: centre ALL sticks/D-pad and release R1'
+                        elif assistance.was_held:
+                            control_status = f'R1 HELD; axes={[round(v, 2) for v in assistance.last_axes]}'
+                        else:
+                            control_status = 'READY: hold R1 (right bumper) + move a stick'
+                    else:
+                        control_status = 'HAND GUIDANCE; torque off; f saves'
+                    print(f'RECORDING: {episode.count} samples saved | {control_status}', flush=True)
             if args.no_preview:
                 key = os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
             else:
+                status = ('HOLDING: support arm, h releases torque'
+                          if episode and assistance and assistance.phase == 'holding'
+                          else 'RECORDING' if episode else 's:start f:finish d:discard q:quit')
+                cv2.putText(frame, status,
+                            (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
+                cv2.putText(overview_frame, 'LOGITECH OVERVIEW', (10, 25),
+                            cv2.FONT_HERSHEY_SIMPLEX, .6, (0, 255, 0), 2)
                 cv2.imshow('ACT wrist demonstration', frame)
                 cv2.imshow('ACT Logitech overview', overview_frame)
                 key = cv2.waitKey(1) & 255
             if key == ord('s') and episode is None:
-                print('Returning to saved start pose; torque will be released for hand guidance.', flush=True)
+                print('Returning to saved start pose.', flush=True)
                 def poll_key():
+                    if joystick:
+                        _, _, stopped = joystick.snapshot()
+                        if stopped:
+                            return ord('x')
                     if args.no_preview:
+                        return os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
+                    if args.approach_source:
                         return os.read(sys.stdin.fileno(), 1)[0] if select.select([sys.stdin], [], [], 0)[0] else -1
                     wrist_ok, wrist = cap.read()
                     overview_ok, overview = overview_cap.read()
@@ -396,46 +522,79 @@ def main():
                     cv2.imshow('ACT wrist demonstration', wrist)
                     cv2.imshow('ACT Logitech overview', overview)
                     return cv2.waitKey(1) & 255
+                if assistance:
+                    assistance.enabled = True
                 cancel_key = return_to_pose(packet, torque_register, cfg,
-                                            session_start_pose, poll_key)
+                                            session_start_pose, poll_key,
+                                            keep_powered=assistance is not None)
                 if cancel_key != -1:
                     print('Return canceled; torque is off. Press s to retry or q to quit.', flush=True)
                     if cancel_key == ord('q'):
                         break
+                    if assistance and cancel_key == ord('x'):
+                        break
                     continue
-                capture_start = time.monotonic_ns()
-                ok, frame = cap.read()
-                capture_end = time.monotonic_ns()
-                if not ok:
-                    raise RuntimeError('Wrist camera read failed after return to start pose')
-                overview_start = time.monotonic_ns()
-                overview_ok, overview_frame = overview_cap.read()
-                overview_end = time.monotonic_ns()
-                if not overview_ok:
-                    raise RuntimeError('Logitech camera read failed after return to start pose')
                 ticks, read_start, read_end = read_positions(packet, cfg)
-                if any(abs(actual - target) > START_RECORD_TOLERANCE_TICKS
-                       for actual, target in zip(ticks, session_start_pose)):
-                    raise RuntimeError(
-                        'Arm moved away from the saved start pose after torque was released: '
-                        f'target={session_start_pose}, actual={ticks}')
                 return_completed_ns = time.monotonic_ns()
+                if assistance:
+                    assistance.begin(ticks, time.monotonic())
                 episode = Episode(ROOT / 'data' / f'episode-{time.time_ns()}',
                                   cfg, session_start_pose, session_start_pose_ns,
                                   ticks, return_completed_ns)
-                episode.append(frame, overview_frame, ticks, capture_start,
-                               capture_end, overview_start, overview_end,
-                               read_start, read_end)
-                print(f'RECORDING STARTED: {episode.directory}', flush=True)
+                episode.joint_only = args.approach_source
+                if assistance:
+                    episode.assistance = dict(mode='replay-then-hand' if assistance.prefix else 'joystick',
+                                              replay_source=assistance.prefix['source'] if assistance.prefix else None,
+                                              replay_until_frame=assistance.prefix['until_frame'] if assistance.prefix else None,
+                                              replay_speed=args.replay_speed)
+                if args.approach_source:
+                    episode.append_joint_state(ticks, read_start, read_end)
+                else:
+                    capture_start = time.monotonic_ns()
+                    ok, frame = cap.read()
+                    capture_end = time.monotonic_ns()
+                    if not ok:
+                        raise RuntimeError('Wrist camera read failed after return to start pose')
+                    overview_start = time.monotonic_ns()
+                    overview_ok, overview_frame = overview_cap.read()
+                    overview_end = time.monotonic_ns()
+                    if not overview_ok:
+                        raise RuntimeError('Logitech camera read failed after return to start pose')
+                    episode.append(frame, overview_frame, ticks, capture_start,
+                                   capture_end, overview_start, overview_end,
+                                   read_start, read_end,
+                                   dict(phase=assistance.phase, target_ticks=assistance.target,
+                                        axes=assistance.last_axes) if assistance else None)
+                print(f'RECORDING STARTED at initial pose: {episode.directory}', flush=True)
             elif key == ord('s'):
                 print('Already recording. Press f to save or d to discard.', flush=True)
+            elif key == ord('h') and episode and assistance and assistance.phase == 'holding':
+                assistance.release_for_hand()
             elif key in (ord('f'), ord('d')) and episode:
+                if key == ord('f') and assistance and assistance.phase not in ('joystick', 'hand'):
+                    print('Finish requires replay completion; discard an interrupted replay with d.', flush=True)
+                    continue
+                if assistance:
+                    assistance.finish(ticks)
                 episode.finish('success' if key == ord('f') and episode.count > 1 else 'discard')
                 episode = None
-                print('READY — press s for the next episode.', flush=True)
+                print('DEMO SAVED — press s to return to the initial pose and record/replay the next demo.', flush=True)
             elif key in (ord('f'), ord('d')):
                 print('No episode recording. Press s to start.', flush=True)
-            elif key == ord('q'):
+            elif key == ord('p') and episode:
+                if assistance and assistance.phase not in ('joystick', 'hand'):
+                    print('Mark the approach only after replay completes.', flush=True)
+                else:
+                    episode.approach_end_frame = episode.count - 1
+                    print(f'APPROACH END MARKED: frame {episode.approach_end_frame}', flush=True)
+                    if args.approach_source:
+                        if assistance:
+                            assistance.finish(ticks)
+                        episode.assistance = dict(mode='approach-source')
+                        episode.finish('success')
+                        episode = None
+                        break
+            elif key == ord('q') or (key == ord('x') and assistance):
                 break
             deadline += period
             time.sleep(max(0, deadline - time.monotonic()))
@@ -444,14 +603,31 @@ def main():
         if episode:
             episode.finish('invalid', str(exc))
             episode = None
-        raise
+        if (isinstance(exc, KeyboardInterrupt) and port
+                and session_start_pose is not None and not args.approach_source):
+            print('\nCtrl+C — returning to the saved start pose before exiting. '
+                  'Press Ctrl+C again to stop the return.', flush=True)
+            return_to_pose(packet, torque_register, cfg, session_start_pose,
+                           lambda: -1)
+        else:
+            raise
     finally:
+        cleanup_error = None
+        try:
+            if assistance:
+                assistance.close()
+            elif joystick:
+                joystick.close()
+        except Exception as exc:
+            cleanup_error = exc
+        finally:
+            if port:
+                port.closePort()
+                port = None
         if terminal_settings is not None:
             termios.tcsetattr(sys.stdin, termios.TCSADRAIN, terminal_settings)
         if episode:
             episode.finish('discard', 'Exited before marking success')
-        if port:
-            port.closePort()
         if lock:
             lock.close()
         if cap:
@@ -459,6 +635,8 @@ def main():
         if overview_cap:
             overview_cap.release()
         cv2.destroyAllWindows()
+        if cleanup_error:
+            raise cleanup_error
 
 
 if __name__ == '__main__':

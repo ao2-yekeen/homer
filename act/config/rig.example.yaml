@@ -7,9 +7,12 @@ overview_camera:
   width: 640
   height: 480
 fps: 10
+joystick:
+  device: /dev/input/by-id/usb-_USB_Controller_5F8629A3-event-joystick
 serial: /dev/serial/by-id/usb-1a86_USB_Single_Serial_5B91029201-if00
 baud: 1000000
 sdk_path: /home/robot-b
 joint_names: [shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper]
 servo_ids: [1, 2, 3, 4, 5, 6]
-# Recorder validates raw ticks (0..4095), not task-specific motion limits.
+# Raw feedback uses 0..4095 ticks. Powered return also checks each servo's
+# EEPROM travel limits. Assisted collection reads those limits from the servos.

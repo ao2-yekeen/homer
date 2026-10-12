@@ -1,11 +1,15 @@
 import importlib.util
 import json
+import gzip
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).parents[1] / 'runtime'))
 
 spec = importlib.util.spec_from_file_location(
     'record', Path(__file__).parents[1] / 'runtime/record.py')
@@ -17,6 +21,7 @@ class FakePacket:
     def __init__(self, positions):
         self.positions = list(positions)
         self.torque = {i: 0 for i in range(1, len(positions) + 1)}
+        self.limits = {i: (0, 4095) for i in self.torque}
         self.events = []
         self.fail_write_number = None
         self.position_writes = 0
@@ -33,7 +38,14 @@ class FakePacket:
         return 0, 0
 
     def read1ByteTxRx(self, servo_id, register):
+        if register == 33:
+            return 0, 0, 0
+        assert register == 40
         return self.torque[servo_id], 0, 0
+
+    def read2ByteTxRx(self, servo_id, register):
+        assert register in (9, 11)
+        return self.limits[servo_id][0 if register == 9 else 1], 0, 0
 
     def write1ByteTxRx(self, servo_id, register, value):
         self.events.append(('torque', servo_id, value))
@@ -77,7 +89,8 @@ class RecorderTests(unittest.TestCase):
         for event in packet.events:
             if event[0] == 'position':
                 servo_id, next_goal = event[1], event[2]
-                self.assertLessEqual(abs(next_goal - goals[servo_id]), 20)
+                self.assertEqual(event[3:], (1000, 50))
+                self.assertLessEqual(abs(next_goal - goals[servo_id]), record.RETURN_MAX_STEP_TICKS)
                 goals[servo_id] = next_goal
         self.assertEqual(packet.events[-1], ('torque', 6, 0))
 
@@ -93,6 +106,35 @@ class RecorderTests(unittest.TestCase):
             record.return_to_pose(failed, 40, self.cfg, target, lambda: -1)
         self.assertEqual(list(failed.torque.values()), [0] * 6)
 
+    def test_return_does_not_refuse_target_outside_servo_limits(self):
+        packet = FakePacket([1000] * 6)
+        packet.limits[2] = (900, 1050)
+        with patch.object(record.time, 'sleep'):
+            record.return_to_pose(packet, 40, self.cfg, [1100] * 6, lambda: -1)
+        self.assertEqual(packet.positions, [1100] * 6)
+
+    def test_return_clamps_out_of_range_manual_position_and_returns(self):
+        packet = FakePacket([1000, 1000, 1000, 1039, 1000, 1000])
+        packet.limits[4] = (1070, 3139)
+        target = [1005, 1005, 1005, 1500, 1005, 1005]
+        with patch.object(record.time, 'sleep'):
+            record.return_to_pose(packet, 40, self.cfg, target, lambda: -1)
+        self.assertEqual(packet.positions, target)
+        wrist_goals = [event[2] for event in packet.events
+                       if event[0] == 'position' and event[1] == 4]
+        self.assertEqual(wrist_goals[0], 1070)
+        self.assertTrue(all(1070 <= goal <= 3139 for goal in wrist_goals))
+
+    def test_powered_return_holds_success_and_releases_on_cancel(self):
+        packet = FakePacket([1000] * 6)
+        with patch.object(record.time, 'sleep'):
+            record.return_to_pose(packet, 40, self.cfg, [1005] * 6,
+                                  lambda: -1, keep_powered=True)
+        self.assertEqual(list(packet.torque.values()), [1] * 6)
+        record.return_to_pose(packet, 40, self.cfg, [1000] * 6,
+                              lambda: ord('x'), keep_powered=True)
+        self.assertEqual(list(packet.torque.values()), [0] * 6)
+
     def test_episode_records_both_cameras_and_fixed_start_pose(self):
         with tempfile.TemporaryDirectory() as tmp:
             start = [2264, 150, 3029, 1446, 3884, 2032]
@@ -102,7 +144,8 @@ class RecorderTests(unittest.TestCase):
             frame = np.zeros((20, 20, 3), dtype=np.uint8)
             episode.append(frame, frame, current, 1, 2, 3, 4, 5, 6)
             episode.finish('success')
-            row = json.loads((directory / 'samples.jsonl').read_text())
+            with gzip.open(directory / 'samples.jsonl.gz', 'rt') as stream:
+                row = json.loads(stream.read())
             metadata = json.loads((directory / 'metadata.json').read_text())
             self.assertTrue((directory / row['image']).exists())
             self.assertTrue((directory / row['overview_image']).exists())

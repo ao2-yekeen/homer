@@ -1,81 +1,42 @@
-# ACT checkpoint compatibility check
+# ACT training tools
 
-This standalone tool has no ROS, serial, camera capture or motion interface.
-It downloads the eight pinned checkpoint files, checks the schema, strictly
-loads all model weights and both saved processors on CPU, and measures fresh
-100-action chunks, including preprocessing and decoding. Cached action dequeue
-time is not reported as inference speed.
+Training ran on Kaggle using its free GPU allowance because no local GPU was
+available. The experiment used 56 demonstrations followed by 18 hand-guided
+corrections. Neither policy achieved reliable pickup and placement.
 
-## Run
+## Recorded-data training
 
-Use Python 3.10 on Linux x86-64 for the tested CPU environment. Install `uv`
-using its official installer or an existing Python environment, then:
+`train.py` trains LeRobot ACT from both camera views and six joint positions.
+It uses absolute future joint ticks, 50-action chunks at 10 Hz, ImageNet image
+normalization, and whole-episode validation splits. Normalization statistics
+come only from training episodes.
 
-```bash
-uv venv --python python3.10 act/.venv
-uv pip sync --python act/.venv/bin/python act/training/requirements-cpu.lock --index-strategy unsafe-best-match
-act/.venv/bin/python act/training/smoke_test.py
-```
+`package_training.py --episodes-file episodes.txt` exports selected successful
+recordings, resized images and portable GPU launchers. It removes the recorded
+stationary replay-to-hand handover pause without changing the original data.
 
-First run requires network access and downloads the model to the Hugging Face
-cache. Model weights and local reports are ignored by Git. Run from the repository
-root. Optional saved inputs:
+`prepare_corrections.py` prepares the original demos and correction segments;
+`package_corrections.py` bundles them with the previous policy. Fine-tuning
+preserves the saved normalization, samples original demos and corrections
+50/50, and uses 2,000 steps at a learning rate of 0.00001. Long quiet periods
+in corrections are shortened; removal ranges remain in the exported metadata.
+Validation keeps original-demo and correction errors separate. These errors
+measure joint prediction, not successful grasping.
 
-```bash
-act/.venv/bin/python act/training/smoke_test.py --image wrist.jpg \
-  --state 0 0 0 0 0 50 --iterations 20 --threads 4
-```
+`train-corrections-kaggle.ipynb` contains the Kaggle workflow. It takes the
+private correction-training ZIP and returns `act-trained-results.zip`.
+The portable packages also support a separate NVIDIA GPU machine through
+`start.sh` or `start.bat`; their included README describes the launcher.
+Datasets, weights, environments and output archives are kept out of Git.
 
-Those state values are illustrative source-policy coordinates, **not servo
-ticks**. Default input is constant RGB and the checkpoint's mean state; it checks
-software execution, not grasp quality. Report location defaults to
-`act/outputs/smoke.json`. Invalid shapes, nonfinite outputs and incompatible
-weights fail the run. Timing is local to the host and configured thread count.
+## Source checkpoint audit
 
-## Source representation audit
+`smoke_test.py` separately checks a public pretrained checkpoint on CPU;
+`source.json`, `requirements-cpu.lock` and `source-audit/` preserve its revision,
+environment and measured results. This was a compatibility check, not the
+policy trained on Homer's recordings.
 
-Model revision and expected LeRobot version are in `source.json`. Public source
-dataset metadata and its immutable revisions are saved in `source-audit/`.
-Both datasets named by the model card confirm 30 FPS and this order for state
-and action: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll,
-gripper, each named `.pos`. That supports position targets rather than tick
-deltas, but metadata alone does not establish calibration, units, signs or
-physical gripper opening.
-
-The model card names expert and HIL datasets, whereas `train_config.json` names
-`TakuyaHiraoka/so101_pick_diverse_objects_v2`. The latter's metadata returned
-HTTP 401 without authentication. This may mean private/unavailable access;
-the exact training dataset cannot be independently audited yet. Do not silently
-treat the public datasets as identical to the training dataset. Do not reuse
-source joint/action statistics for Homer without measured conversion and new
-training statistics.
-
-The source config's author-local pretrained path and CUDA processor are
-overridden in memory. No source files are rewritten. Backbone initialization
-does not download ImageNet weights because strict loading supplies the complete
-backbone. This starts no optimizer and performs no training.
-
-## Acceptance
-
-Software gate: full weights and processors load, decoded output is finite with
-shape `[1, 100, 6]`, and repeated fresh-chunk latency is measured. The measured
-p95 gives a fresh-chunk frequency estimate; it does not determine command FPS.
-Control FPS remains unset until recording throughput, transport delay and
-guarded execution are measured. The vertical rig and source calibration still
-require compatibility validation before execution.
-
-Sources: [model and card](https://huggingface.co/TakuyaHiraoka/act_so101_pick_diverse_objects),
-[ACT implementation](https://github.com/huggingface/lerobot/tree/v0.4.4/src/lerobot/policies/act),
-[expert dataset](https://huggingface.co/datasets/TakuyaHiraoka/so101_pick_diverse_objects),
-[HIL dataset](https://huggingface.co/datasets/TakuyaHiraoka/so101_pick_diverse_objects_hil_round1).
-
-## Measured result
-
-The saved `source-audit/cpu-smoke-result.json` records a successful run on
-this WSL Linux laptop with four CPU threads and ten measured iterations after
-two warmups. Median fresh-chunk latency was 387 ms, p95 478 ms (about 2.09
-fresh chunks/s). Full strict weight loading, source mean-state normalization
-and finite decoded `[1, 100, 6]` output passed. This does not support fresh
-prediction at 20–30 Hz on this host. Buffered chunk execution may use a higher
-command rate, but its feedback delay and safe chunk handling must be measured
-in the later execution step. No arm or camera hardware was accessed.
+The saved laptop run loaded weights and processors and returned finite
+`[1, 100, 6]` action chunks. Median latency was 387 ms and p95 was 478 ms
+with four CPU threads. It did not test physical grasping. Source joint units
+and calibration cannot be assumed to match Homer's raw servo ticks.

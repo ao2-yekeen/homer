@@ -36,7 +36,7 @@ def main():
                 archive.write(path, prefix + 'initial-policy/' + path.relative_to(args.checkpoint).as_posix())
         for source, target in [('run.py', 'run.py'), ('train.py', 'train.py'),
                                ('requirements-gpu.txt', 'requirements.txt'),
-                               ('CORRECTION-FRIEND-README.md', 'README.md'),
+                               ('package-readme.md', 'README.md'),
                                ('start.sh', 'start.sh'), ('start.ps1', 'start.ps1'),
                                ('start.bat', 'start.bat')]:
             archive.write(ROOT / source, prefix + target)

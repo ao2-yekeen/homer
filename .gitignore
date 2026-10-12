@@ -9,6 +9,19 @@ data/reachability/
 captures/
 experiment-archives/
 
+# Local training exports
+act-trained-results.zip
+output-*.zip
+*.zip:Zone.Identifier
+
+# Local editor and test caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+Thumbs.db
+*.swp
+
 # ACT local environments, weights and benchmark artifacts
 .venv-act/
 act/.venv/
