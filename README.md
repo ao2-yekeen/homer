@@ -64,12 +64,12 @@ platform.
 
 | Component | Qty | Cost | Link |
 |---|---:|---:|---|
-| FEETECH SO-ARM101 | 1 | £93.24 | [GitHub](https://github.com/TheRobotStudio/SO-ARM100) |
+| FEETECH SO-ARM101 | 1 | £93.24 | [AliExpress purchase listing](https://www.aliexpress.com/item/1005013035691637.html) |
 | RPLidar A1M8 | 1 | £93.00 | [RobotShop](https://uk.robotshop.com/products/rplidar-a1m8-360-degree-laser-scanner-development-kit) |
 | Arducam ToF Camera | 1 | £51.50 | [Pi Hut](https://thepihut.com/products/time-of-flight-camera-for-raspberry-pi) |
 | BNO085 IMU | 1 | £20.90 | [Amazon](https://www.amazon.co.uk/dp/B0GXZNT84M) |
 | Waveshare Servo Driver | 1 | £9.99 | [Amazon](https://www.amazon.co.uk/dp/B0CJ6TP3TP) |
-| Drive motor | 1 | Price not recorded | [Amazon](https://www.amazon.co.uk/dp/B07WRYQZNR) |
+| Drive motor and wheel kit | 1 | Price not recorded | [Amazon](https://www.amazon.co.uk/dp/B07WRYQZNR) |
 | DC Buck Converter | 1 | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B07DK6WN63) |
 | Motor Driver | 1 | £6.81 | — |
 | Caster Wheels | 4 | £2.99 | [Amazon](https://www.amazon.co.uk/dp/B0GH2LKD9Q) |
@@ -79,7 +79,7 @@ platform.
 | Silicone Wire | 5 m | £4.99 | [Amazon](https://www.amazon.co.uk/dp/B0G2SL4NGQ) |
 | Battery pack | 1 | Price not recorded | [Amazon](https://www.amazon.co.uk/dp/B0D3Y3ZRBK) |
 | Raspberry Pi 4 Model B (2 GB, typical new price) | 1 | £50.85 | [DigiKey](https://www.digikey.co.uk/en/product-highlight/r/raspberry-pi/raspberry-pi-4-model-b) |
-| Aluminium extrusion frame | 1 | Free (provided by university) | [Example extrusion](https://www.aluminium-profile.co.uk/aluminium-profile-2020/) |
+| Aluminium extrusion frame | 1 | Free (provided by university) | [Example 2020 profile](https://www.123-3d.co.uk/123-3D-Aluminium-profile-2020-black-1m-length-123-3D-brand-HFSB5-2020-1000-i3765.html) |
 | Logitech RGB camera | 1 | Used, bought on eBay; price not recorded | [eBay listings](https://www.ebay.co.uk/sch/i.html?_nkw=Logitech+RGB+webcam) |
 | 3D-printed parts and fasteners | Mixed | Not recorded | — |
 | **Subtotal of recorded costs** | | **£356.16** | |
