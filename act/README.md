@@ -20,6 +20,8 @@ and a fixed stopping point that did not check whether placement had happened.
 The exact cause of the failed grasp remains unresolved; this experiment did
 not produce a working autonomous pick-and-place policy.
 
+## Future work
+
 The next attempt will use a camera to track a person's hand movements and
 teleoperate the arm while recording demonstrations. The aim is to avoid buying
 a separate leader arm and keep the cost down. This approach has not yet been
