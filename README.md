@@ -1,44 +1,66 @@
-# Homer mobile manipulator
+# Homer | ROS 2 mobile manipulator
 
-Homer is a custom mobile manipulator built around an ESP32, Raspberry Pi,
-ROS 2 Jazzy, differential-drive base, SO-ARM 101, and RPLIDAR A1. This
-repository contains the firmware, Raspberry Pi integration, operator controls,
-calibration material, and PyBullet simulation for that robot.
+Homer is a low-cost mobile manipulator that brings an ESP32 drive base, a
+Raspberry Pi, and a SO-ARM 101 together as one ROS 2 robot. The project explores
+the full path from embedded motor control and teleoperation to perception,
+mapping, and manipulation.
 
-This is an active engineering repository for one physical robot. It is not a
-ready-to-run robot kit: several values still depend on the wiring, controller,
-servo calibration, and clearances of the target machine.
+![Homer prototype with a SO-ARM 101 on the mobile base](docs/assets/homer-robot.png)
 
-## Read this first
+**The goal:** find an object, approach it, and grasp it. The robot is under
+active development; autonomous approach and grasping are not yet demonstrated.
 
-The current work is split into two related areas:
+| | |
+| --- | --- |
+| **Robot software** | ROS 2 Jazzy · Raspberry Pi · ESP32 · Python · C++ |
+| **Hardware** | Differential-drive base · SO-ARM 101 · RPLIDAR A1 · RGB and ToF cameras |
+| **Engineering focus** | Safe control · sensor integration · calibration · simulation |
 
-- **Arm safety baseline:** named SO-ARM poses and slow, repeatable motion are
-  still the first physical prerequisite for automated grasping.
-- **Reachable-workspace model:** the repository generates a conservative
-  workspace estimate from the calibrated URDF. It helps compare target
-  positions with the model; it does not authorise a physical move.
+## What’s here
 
-Words such as `REQUIRES_HARDWARE_TEST` mean that software checks cannot prove
-the claim. Do not replace that marker with a success claim unless the stated
-physical test has actually been performed and recorded.
+- **Robot control:** ESP32 firmware for the drive base, encoder odometry, neck
+  servo, and a bounded serial protocol; ROS 2 bridges and dead-man gamepad
+  controls run on the Pi.
+- **Navigation and sensing:** LiDAR mapping support, RGB object detection,
+  camera/ToF experiments, and recorded evidence for unresolved range and
+  clearance questions.
+- **Manipulation research:** SO-ARM 101 control, workspace modelling, and an
+  experimental ACT policy path. Automated grasping remains a work in progress.
+- **Simulation and calibration:** a PyBullet model, reachable-workspace
+  analysis, measured encoder notes, and procedures for checking robot-specific
+  geometry.
 
-> **Hardware safety:** do not enable motion from a fresh checkout. Test with
-> the drive wheels lifted, the arm supported, and an accessible emergency power
-> disconnect. Confirm controller mappings, USB device identities, motor wiring,
-> and power capacity on the specific robot first.
+Start with the [system architecture and ROS graph](docs/architecture/README.md),
+or try the [hardware-free simulation](simulation/README.md).
 
-## What lives here
+This is an engineering project for one physical robot, not a ready-to-run kit.
+Wiring, device paths, controller mappings, servo calibration, and clearances
+must be checked on the target machine.
+
+## Safety and evidence
+
+Do not enable motion from a fresh checkout. Test with the drive wheels lifted,
+the arm supported, and an accessible emergency power disconnect. Verify the
+controller mapping, USB device identities, motor wiring, and power capacity
+first. Claims marked `REQUIRES_HARDWARE_TEST` still need the stated physical
+check.
+
+The reachable-workspace visualisation is a model-derived planning aid, not a
+motion command or proof that a physical move is safe. The current arm mount
+cannot reach the floor, so workspace and grasp tests use a raised rigid
+platform.
+
+## Project map
 
 | Area | Purpose | Starting point |
 | --- | --- | --- |
-| ESP32 firmware | serial link, drive control, encoders, odometry, neck servo | [`firmware/`](firmware/) |
-| Raspberry Pi runtime | serial ROS bridge, SO-ARM bridge, LiDAR support | [`pi/`](pi/) |
-| Gamepad coordinator | dead-man controls and ROS command translation | [`pi/robot_teleop/`](pi/robot_teleop/) |
-| Simulation | PyBullet model with simulated odometry and LiDAR | [`simulation/`](simulation/) |
-| Operator controls | control map and pre-motion checks | [`docs/gamepad-control-map.md`](docs/gamepad-control-map.md) |
+| ESP32 firmware | Drive, encoders, odometry, neck, serial link | [`firmware/`](firmware/) |
+| Raspberry Pi runtime | ROS bridges, services, sensors, diagnostics | [`pi/`](pi/) |
+| Gamepad teleoperation | Dead-man controls and command routing | [`pi/robot_teleop/`](pi/robot_teleop/) |
+| Simulation | PyBullet robot and workspace/LiDAR experiments | [`simulation/`](simulation/) |
+| Documentation | ROS graph, calibration, controls, evidence | [`docs/`](docs/) |
 
-### System architecture
+## System architecture
 
 See the [architecture diagrams](docs/architecture/README.md) for the Pi boot
 services, ROS topics, ESP32 and arm control, sensors, and LiDAR scan watchdog.
@@ -48,29 +70,7 @@ Start with the [ESP32 loop](firmware/src/main.cpp),
 [`pi/device_paths.py`](pi/device_paths.py); see the
 [device map](pi/README.md#device-identities-and-usb-safety) before changing cables.
 
-## Status and safety
-
-This is an integration project for one physical robot, not a general-purpose
-robot distribution. Hardware calibration, controller mappings, serial-device
-names, and wiring must be checked on the target robot before deployment. Drive
-calibration and SO-ARM EEPROM travel limits are robot-specific.
-
-The reachable-workspace visualisation is a model-derived planning aid. It is
-not a motion command or proof that a physical move is safe. Before a workspace
-region is used for planning, physically check the raised platform position,
-clearances, and servo-to-URDF calibration. The current robot cannot reach the
-floor from its present arm mount, so workspace and grasp tests use a raised
-rigid platform only.
-
 ## Quick start
-
-### Visual preview
-
-The repository includes this generated simulation preview so readers can see
-what the lightweight LiDAR test produces. It is simulation output, not a
-photograph or physical validation result.
-
-![PyBullet simulation showing the robot and simulated RPLIDAR scan](docs/assets/simulation-lidar.png)
 
 ### Run the simulation
 
@@ -240,16 +240,6 @@ PYTHONPATH=pi/robot_teleop/src python3 -m unittest discover -s pi/robot_teleop/t
 
 For any firmware or runtime change, also check the relevant physical interface
 on the robot with motion inhibited before attempting a lifted-wheel test.
-
-## Repository map
-
-| Path | Contents |
-| --- | --- |
-| `firmware/` | Arduino CLI sketch and ESP32 firmware for the base, encoders, odometry, neck servo, and serial link |
-| `pi/` | Raspberry Pi services, ROS bridges, diagnostics, and tests |
-| `simulation/` | PyBullet robot model and workspace/LiDAR simulation |
-| `config/` | Measured or pending calibration values; `null` means not measured |
-| `docs/` | Operator controls and physical calibration procedures |
 
 ## Documentation map
 
